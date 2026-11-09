@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60" width="240" height="60" fill="none">
+  <!-- Solid White Background -->
+  <rect width="240" height="60" fill="#FFFFFF"/>
+  
+  <!-- Electric Blue Geometric Document and Checkmark Icon (#4563F5) -->
+  <g transform="translate(14, 11)">
+    <!-- Document silhouette -->
+    <rect x="3" y="3" width="21" height="30" rx="3" stroke="#4563F5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Completed Checkmark -->
+    <path d="M10 19L16 25L30 9" stroke="#4563F5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  
+  <!-- Dark Navy Modern Sans-Serif Typography (#172554) -->
+  <text x="64" y="38" fill="#172554" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-size="24" font-weight="800" letter-spacing="1.5">REGISTRA</text>
+</svg>

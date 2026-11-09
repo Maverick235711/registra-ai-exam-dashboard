@@ -1,0 +1,6 @@
+{
+  "name": "REGISTRA – AI Exam Application Dashboard",
+  "description": "One Profile. Every Exam. Zero Repetition. AI-powered competitive examination application assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
