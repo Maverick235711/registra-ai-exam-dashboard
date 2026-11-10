@@ -14,13 +14,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { ChatMessage } from '../types';
-import { initialChatMessages } from '../data/mockData';
+import { evaluateEligibility, getDaysRemaining, REQUIRED_PROFILE_DOCUMENTS } from '../utils/eligibilityEngine';
 
 export const AiAssistantView: React.FC = () => {
   const { 
     profile, 
     documents, 
     applications, 
+    exams,
     profileCompletion,
     openWorkflow, 
     setActiveTab, 
@@ -29,44 +30,30 @@ export const AiAssistantView: React.FC = () => {
 
   const userFirstName = profile.personalInfo.fullName ? profile.personalInfo.fullName.split(' ')[0] : 'there';
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'msg_welcome',
-      sender: 'assistant',
-      timestamp: '09:00 AM',
-      text: `Hello ${userFirstName}! I'm **Registra AI**, your unified competitive exam application assistant. Your profile is currently **${profileCompletion.overall}%** complete. How can I assist your exam journey today?`,
-      actions: [
-        { label: 'Which exams am I eligible for?', actionType: 'CHECK_ELIGIBILITY' },
-        { label: 'Help me fill my JEE application', actionType: 'START_WORKFLOW', payload: 'exam_jee_main' },
-        { label: 'Which documents are missing?', actionType: 'VIEW_DOCS' },
-        { label: 'What are my upcoming deadlines?', actionType: 'NAVIGATE', payload: 'deadlines' },
-      ],
-    },
-  ]);
+  const createWelcomeMessage = (): ChatMessage => ({
+    id: `msg_welcome_${profile.id}`,
+    sender: 'assistant',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    text: `Hello ${userFirstName}! Your saved profile is **${profileCompletion.overall}%** complete. I can summarize data currently saved in your account.`,
+    actions: [
+      { label: 'Which exams am I eligible for?', actionType: 'CHECK_ELIGIBILITY' },
+      ...(exams[0] ? [{ label: `Prepare ${exams[0].name} draft`, actionType: 'START_WORKFLOW' as const, payload: exams[0].id }] : []),
+      { label: 'Which documents are missing?', actionType: 'VIEW_DOCS' },
+      { label: 'What are my upcoming deadlines?', actionType: 'NAVIGATE', payload: 'deadlines' },
+    ],
+  });
+  const [messages, setMessages] = useState<ChatMessage[]>([createWelcomeMessage()]);
 
   useEffect(() => {
-    setMessages([
-      {
-        id: 'msg_welcome_' + profile.id,
-        sender: 'assistant',
-        timestamp: '09:00 AM',
-        text: `Hello ${userFirstName}! I'm **Registra AI**, your unified competitive exam application assistant. Your profile is currently **${profileCompletion.overall}%** complete. How can I assist your exam journey today?`,
-        actions: [
-          { label: 'Which exams am I eligible for?', actionType: 'CHECK_ELIGIBILITY' },
-          { label: 'Help me fill my JEE application', actionType: 'START_WORKFLOW', payload: 'exam_jee_main' },
-          { label: 'Which documents are missing?', actionType: 'VIEW_DOCS' },
-          { label: 'What are my upcoming deadlines?', actionType: 'NAVIGATE', payload: 'deadlines' },
-        ],
-      },
-    ]);
-  }, [profile.id, userFirstName, profileCompletion.overall]);
+    setMessages([createWelcomeMessage()]);
+  }, [profile.id, userFirstName, profileCompletion.overall, exams]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const suggestedQuestions = [
     'Which exams am I eligible for?',
-    'Help me fill my JEE application.',
+    'Help me prepare an application draft.',
     'Which documents are missing?',
     'What are my upcoming deadlines?',
     'Check my application for mistakes.',
@@ -102,61 +89,66 @@ export const AiAssistantView: React.FC = () => {
 
       const lower = text.toLowerCase();
       if (lower.includes('eligible') || lower.includes('which exams')) {
-        responseText = `Based on your verified **10+2 PCM score of 89.2%** from CBSE and birth year 2006, you are **100% eligible** for:
-- **JEE Main 2027** (NTA criteria: >75% in Class 12 PCM)
-- **BITSAT 2027** (BITS Pilani criteria: >75% aggregate in PCM)
-- **CUET UG 2027** (Central Universities)
-
-You are **not eligible** for NEET UG 2027 (requires Biology/Biotechnology) or UPSC CSE (requires completed graduation).`;
-        actions = [
-          { label: 'Review JEE Main Eligibility', actionType: 'CHECK_ELIGIBILITY', payload: 'exam_jee_main' },
-          { label: 'Review BITSAT Eligibility', actionType: 'CHECK_ELIGIBILITY', payload: 'exam_bitsat' },
-        ];
-      } else if (lower.includes('jee') || lower.includes('fill')) {
-        responseText = `I have loaded the official **JEE Main 2027 Session 1** specification from NTA.
-Your verified personal details, CBSE Class 10 & 12 marks, passport photograph, and specimen signature are ready to be mapped. Only **3 non-reusable fields** (exam city choices and Aadhaar OTP consent) require your manual review.`;
-        actions = [
-          { label: 'Launch JEE Main 7-Step Workflow', actionType: 'START_WORKFLOW', payload: 'exam_jee_main' },
-        ];
-      } else if (lower.includes('document') || lower.includes('missing')) {
-        const missing = documents.filter(d => d.status === 'Missing' || d.status === 'Pending Review');
-        if (missing.length > 0) {
-          responseText = `You currently have **${missing.length} document** needing attention:
-- **${missing[0].title}**: ${missing[0].status}.
-
-Your Class 10 marksheet, Class 12 marksheet, photograph, and digital signature are already verified with high OCR confidence.`;
+        const results = exams.map((exam) => ({ exam, result: evaluateEligibility(profile, exam) }));
+        const eligible = results.filter(({ result }) => result.sufficientInformation && result.isEligible);
+        const undetermined = results.filter(({ result }) => !result.sufficientInformation);
+        if (eligible.length) {
+          responseText = `Based on your saved profile and configured criteria, these exams currently match: ${eligible.map(({ exam }) => exam.name).join(', ')}. Confirm requirements against each official notice.`;
+          actions = eligible.slice(0, 3).map(({ exam }) => ({
+            label: `Review ${exam.name}`,
+            actionType: 'CHECK_ELIGIBILITY' as const,
+            payload: exam.id,
+          }));
+        } else if (undetermined.length) {
+          responseText = 'I cannot determine eligibility yet. Add the profile information required by the available exam criteria, then check again.';
+          actions = [{ label: 'Update profile', actionType: 'NAVIGATE', payload: 'profile' }];
         } else {
-          responseText = 'All mandatory documents in your vault are 100% verified and compliant with NTA/CBSE guidelines!';
+          responseText = exams.length
+            ? 'Your saved profile does not meet the currently configured criteria for the available exams.'
+            : 'No verified exam records with eligibility criteria are currently available.';
         }
-        actions = [
-          { label: 'Open Document Vault', actionType: 'VIEW_DOCS' },
-        ];
+      } else if (lower.includes('jee') || lower.includes('fill') || lower.includes('application draft')) {
+        const exam = lower.includes('jee') ? exams.find((item) => item.name.toLowerCase().includes('jee')) : exams[0];
+        if (exam) {
+          responseText = `${exam.name} is present in your verified exam catalog. REGISTRA can prepare a draft only when application-field requirements are configured; it does not submit applications to exam portals.`;
+          actions = [{ label: `Review ${exam.name}`, actionType: 'START_WORKFLOW', payload: exam.id }];
+        } else {
+          responseText = 'No verified exam record is currently available to prepare an application draft.';
+        }
+      } else if (lower.includes('document') || lower.includes('missing')) {
+        const missing = REQUIRED_PROFILE_DOCUMENTS.filter((type) => {
+          const document = documents.find((item) => item.type === type);
+          return !document?.fileUrl || document.status === 'Missing';
+        }).map((type) => documents.find((document) => document.type === type)?.title || type.replaceAll('_', ' '));
+        const pending = documents.filter((document) => document.fileUrl && document.status !== 'Verified');
+        if (missing.length) {
+          responseText = `Required documents not uploaded: ${missing.join(', ')}.${pending.length ? ` ${pending.length} uploaded document(s) still need review.` : ''}`;
+        } else {
+          responseText = pending.length
+            ? `All required document slots have uploads; ${pending.length} document(s) are still awaiting verification.`
+            : 'All required document slots have uploaded files marked verified.';
+        }
+        actions = [{ label: 'Open Document Vault', actionType: 'VIEW_DOCS' }];
       } else if (lower.includes('deadline') || lower.includes('upcoming')) {
-        responseText = `Here are your urgent deadlines:
-1. **GATE 2027**: Closes in **14 days** (Nov 22, 2026)
-2. **SSC CGL 2027**: Closes in **20 days** (Nov 28, 2026)
-3. **CUET UG 2027**: Closes in **22 days** (Nov 30, 2026)
-4. **JEE Main 2027**: Closes in **27 days** (Dec 05, 2026)
-
-I recommend finalizing your JEE Main application this week.`;
-        actions = [
-          { label: 'View Deadline Calendar', actionType: 'NAVIGATE', payload: 'deadlines' },
-        ];
+        const deadlines = exams
+          .filter((exam) => exam.status === 'Registration Open' || exam.status === 'Upcoming')
+          .map((exam) => ({ exam, days: getDaysRemaining(exam.applicationDeadline) }))
+          .filter((item): item is { exam: typeof exams[number]; days: number } => item.days !== null && item.days >= 0)
+          .sort((a, b) => a.days - b.days);
+        responseText = deadlines.length
+          ? `Upcoming verified registration deadlines: ${deadlines.map(({ exam, days }) => `${exam.name} (${exam.applicationDeadline}, ${days} days)`).join('; ')}.`
+          : 'No upcoming registration deadlines are available from verified exam records.';
+        actions = [{ label: 'View Deadline Calendar', actionType: 'NAVIGATE', payload: 'deadlines' }];
       } else if (lower.includes('mistake') || lower.includes('check')) {
-        const candidateName = profile.personalInfo.fullName || 'Candidate';
-        const candidatePin = profile.personalInfo.address.pincode || 'on record';
-        responseText = `I performed an audit across your draft applications:
-- **JEE Main**: Consistent name ("${candidateName}") matches verified identity records. PIN Code ${candidatePin} verified.
-- **Notice**: In the BITSAT draft, your 12th Board marks are waiting for re-confirmation.
-- **Safety check**: No duplicate submissions detected.`;
-        actions = [
-          { label: 'Inspect Applications', actionType: 'NAVIGATE', payload: 'applications' },
-        ];
+        responseText = applications.length
+          ? `Your account has ${applications.length} saved application record(s): ${applications.map((application) => `${application.examName} (${application.status})`).join(', ')}. Review each record and its missing-field list before continuing.`
+          : 'There are no application records in your account to review.';
+        actions = [{ label: 'Inspect Applications', actionType: 'NAVIGATE', payload: 'applications' }];
       } else {
-        responseText = `I understand your query regarding "${text}". As your Registra AI assistant, I can auto-map your profile fields, audit documents for NTA/UPSC formatting standards, or evaluate your marks against cutoff percentages.`;
+        responseText = 'I can summarize the profile, documents, applications, and verified exam records currently available in your REGISTRA account.';
         actions = [
           { label: 'Which exams am I eligible for?', actionType: 'CHECK_ELIGIBILITY' },
-          { label: 'Check my application for mistakes', actionType: 'NAVIGATE', payload: 'applications' },
+          { label: 'Review my applications', actionType: 'NAVIGATE', payload: 'applications' },
         ];
       }
 
@@ -175,7 +167,7 @@ I recommend finalizing your JEE Main application this week.`;
 
   const handleActionClick = (action: NonNullable<ChatMessage['actions']>[number]) => {
     if (action.actionType === 'START_WORKFLOW') {
-      openWorkflow(action.payload || 'exam_jee_main');
+      openWorkflow(action.payload);
     } else if (action.actionType === 'CHECK_ELIGIBILITY') {
       if (action.payload) setSelectedExamForEligibility(action.payload);
       setActiveTab('eligibility');
@@ -203,7 +195,7 @@ I recommend finalizing your JEE Main application this week.`;
 
         <button
           type="button"
-          onClick={() => setMessages(initialChatMessages)}
+          onClick={() => setMessages([createWelcomeMessage()])}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5" />

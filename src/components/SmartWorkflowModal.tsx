@@ -6,17 +6,12 @@ import {
   ArrowLeft, 
   Sparkles, 
   ShieldCheck, 
-  FileText, 
-  Layers, 
   ExternalLink, 
   AlertTriangle, 
   Check, 
-  Compass,
-  Download,
   Lock
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { examDatabase } from '../data/mockData';
 import { mapProfileToExamFields } from '../utils/eligibilityEngine';
 
 interface SmartWorkflowModalProps {
@@ -25,23 +20,19 @@ interface SmartWorkflowModalProps {
 }
 
 export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, onClose }) => {
-  const { profile, documents, updateApplication, addToast } = useApp();
+  const { profile, documents, exams, saveApplication, addToast } = useApp();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [selectedExamId, setSelectedExamId] = useState<string>(examId || 'exam_jee_main');
-  
-  // Missing fields for step 3
-  const [cityChoice1, setCityChoice1] = useState('New Delhi');
-  const [cityChoice2, setCityChoice2] = useState('Noida / Greater Noida');
-  const [cityChoice3, setCityChoice3] = useState('Gurugram');
-  const [aadhaarConsent, setAadhaarConsent] = useState(true);
+  const [selectedExamId, setSelectedExamId] = useState<string>(examId || '');
 
-  // Step 7 Approval
-  const [userApproved, setUserApproved] = useState(false);
+  const [savedApplicationId, setSavedApplicationId] = useState<string | null>(null);
   const [finalConsentChecked, setFinalConsentChecked] = useState(false);
 
-  const selectedExam = examDatabase.find(e => e.id === selectedExamId) || examDatabase[0];
-  const mappedSections = mapProfileToExamFields(profile, selectedExam.name);
+  const selectedExam = exams.find((exam) => exam.id === selectedExamId);
+  const mappedSections = selectedExam ? mapProfileToExamFields(profile, selectedExam, documents) : [];
+  const mappedFields = mappedSections.flatMap((section) => section.fields);
+  const mappedFieldsCount = mappedFields.filter((field) => field.status === 'Auto-Mapped' || field.status === 'Verified').length;
+  const fieldsForReview = mappedFields.filter((field) => field.status === 'Missing' || field.status === 'Manual Review');
 
   const steps = [
     { number: 1, title: 'Select Exam' },
@@ -65,24 +56,57 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
     }
   };
 
-  const handleFinalApproval = () => {
+  const handleFinalApproval = async () => {
     if (!finalConsentChecked) {
       addToast('Please confirm your review checkbox first', 'warning');
       return;
     }
 
-    setUserApproved(true);
-    updateApplication(`app_${selectedExam.id.replace('exam_', '')}`, {
-      status: 'Completed',
-      progressPercent: 100,
-      lastUpdated: 'Just now',
-      missingFields: [],
-      mappedFieldsCount: 25,
-      totalFieldsCount: 25,
-    });
-
-    addToast(`Smart Application Package verified for ${selectedExam.name}!`, 'success');
+    if (!selectedExam || !selectedExam.applicationFields?.length) {
+      addToast('Verified application-field requirements are unavailable for this exam.', 'warning');
+      return;
+    }
+    try {
+      const saved = await saveApplication({
+        examId: selectedExam.id,
+        status: 'Needs Review',
+        progressPercent: mappedFields.length ? Math.round((mappedFieldsCount / mappedFields.length) * 100) : 0,
+        missingFields: fieldsForReview.map((field) => field.examField),
+        mappedFieldsCount,
+        totalFieldsCount: mappedFields.length,
+      });
+      setSavedApplicationId(saved.id);
+      addToast(`Draft saved for ${selectedExam.name}. No official application was submitted.`, 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Application draft could not be saved.', 'warning');
+    }
   };
+
+  if (!selectedExam) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+        <div className="max-w-md rounded-2xl bg-white p-6 text-center">
+          <h3 className="text-sm font-bold text-slate-900">Exam record unavailable</h3>
+          <p className="mt-2 text-xs text-slate-500">The selected exam is not present in the verified exam catalog.</p>
+          <button type="button" onClick={onClose} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!selectedExam.applicationFields?.length) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+        <div className="max-w-md rounded-2xl bg-white p-6 text-center">
+          <h3 className="text-sm font-bold text-slate-900">Application requirements unavailable</h3>
+          <p className="mt-2 text-xs text-slate-500">
+            {selectedExam.name} has no verified application-field schema yet. REGISTRA will not fabricate mappings or create a misleading draft.
+          </p>
+          <button type="button" onClick={onClose} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Close</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -164,7 +188,7 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {examDatabase.map((exam) => {
+                {exams.map((exam) => {
                   const isSelected = exam.id === selectedExamId;
                   return (
                     <div
@@ -202,7 +226,7 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
               <div>
                 <h4 className="text-sm font-bold text-slate-900">Step 2: Confirm Stored Profile Credentials</h4>
                 <p className="text-xs text-slate-500">
-                  Confirm your verified identity that will be stamped into the {selectedExam.name} application.
+                  Review the actual profile information REGISTRA would use for {selectedExam.name}.
                 </p>
               </div>
 
@@ -251,9 +275,9 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">DigiLocker Status</span>
-                    <span className="font-semibold text-emerald-600 flex items-center gap-1">
+                    <span className="font-semibold text-slate-600 flex items-center gap-1">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Verified</span>
+                      <span>Not connected</span>
                     </span>
                   </div>
                 </div>
@@ -265,61 +289,21 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
           {currentStep === 3 && (
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Step 3: Exam-Specific Missing Preferences</h4>
+                <h4 className="text-sm font-bold text-slate-900">Step 3: Fields Requiring Review</h4>
                 <p className="text-xs text-slate-500">
-                  These choices are unique to {selectedExam.name} and cannot be automatically inherited from your generic profile.
+                  This list is calculated from {selectedExam.name}'s configured application fields and your saved profile and document data.
                 </p>
               </div>
 
               <div className="p-5 rounded-2xl bg-white border border-slate-200/80 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Exam City Preference 1 *
-                    </label>
-                    <input
-                      type="text"
-                      value={cityChoice1}
-                      onChange={(e) => setCityChoice1(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Exam City Preference 2 *
-                    </label>
-                    <input
-                      type="text"
-                      value={cityChoice2}
-                      onChange={(e) => setCityChoice2(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Exam City Preference 3 *
-                    </label>
-                    <input
-                      type="text"
-                      value={cityChoice3}
-                      onChange={(e) => setCityChoice3(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="consent_aadhaar"
-                    checked={aadhaarConsent}
-                    onChange={(e) => setAadhaarConsent(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 mt-0.5 cursor-pointer"
-                  />
-                  <label htmlFor="consent_aadhaar" className="text-xs text-slate-700 cursor-pointer">
-                    <strong>NTA Aadhaar Authentication Consent:</strong> I voluntarily permit REGISTRA to verify my Aadhaar specimen token with the UIDAI offline XML gateway as mandated by {selectedExam.authority}.
-                  </label>
-                </div>
+                {fieldsForReview.length === 0
+                  ? <p className="text-xs text-slate-500">All configured fields currently have mapped or verified profile values.</p>
+                  : fieldsForReview.map((field) => (
+                    <div key={field.examField} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-slate-700">{field.examField}</span>
+                      <span className="text-amber-700">{field.status}</span>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -328,9 +312,9 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
           {currentStep === 4 && (
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Step 4: Autonomous Field Schema Mapping</h4>
+                <h4 className="text-sm font-bold text-slate-900">Step 4: Field Mapping</h4>
                 <p className="text-xs text-slate-500">
-                  REGISTRA maps your single profile schema to {selectedExam.authority}'s specific portal schema with zero loss of fidelity.
+                  Values and statuses are derived from the configured exam fields, saved profile, and verified documents.
                 </p>
               </div>
 
@@ -345,8 +329,12 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
                             <span className="text-[10px] text-slate-400 block uppercase font-semibold">{f.examField}</span>
                             <span className="font-semibold text-slate-800">{f.studentValue}</span>
                           </div>
-                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
-                            <Check className="w-3 h-3" />
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                            f.status === 'Missing' || f.status === 'Manual Review'
+                              ? 'text-amber-700 bg-amber-50 border-amber-100'
+                              : 'text-emerald-700 bg-emerald-50 border-emerald-100'
+                          }`}>
+                            {f.status === 'Missing' || f.status === 'Manual Review' ? <AlertTriangle className="w-3 h-3" /> : <Check className="w-3 h-3" />}
                             <span>{f.status}</span>
                           </span>
                         </div>
@@ -362,32 +350,32 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
           {currentStep === 5 && (
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Step 5: Synthesize Registration Package</h4>
+                <h4 className="text-sm font-bold text-slate-900">Step 5: Review Draft Data</h4>
                 <p className="text-xs text-slate-500">
-                  All 25 fields and cryptographic attachments assembled into a standardized JSON submission packet.
+                  This summary is calculated from this exam's configured fields and the saved values available in your account.
                 </p>
               </div>
 
               <div className="p-5 rounded-2xl bg-slate-900 text-slate-100 space-y-3 font-mono text-xs">
                 <div className="flex items-center justify-between text-indigo-400 font-bold">
-                  <span>REGISTRA_PACKAGE_v2.4</span>
-                  <span>DIGITALLY SIGNED</span>
+                  <span>{selectedExam.name}</span>
+                  <span>Draft preview</span>
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  // Examination ID: {selectedExam.id}
+                  // Exam record: {selectedExam.id}
                   <br />
-                  // Candidate Hash: SHA-256 ({(profile.personalInfo.fullName || 'Candidate').replace(/\s+/g, '_')}_CBSE{profile.academicInfo.class12.passingYear || 2024})
+                  // Fields mapped: {mappedFieldsCount} / {mappedFields.length}
                   <br />
-                  // Mapped Fields: 25 / 25 (100% Complete)
+                  // Fields requiring review: {fieldsForReview.length}
                   <br />
-                  // Document Vault References: [Photo, Signature, 10thMarksheet, 12thMarksheet]
+                  // Required exam documents uploaded: {selectedExam.documentsRequired.filter((type) =>
+                    documents.some((document) => document.type === type && Boolean(document.fileUrl))
+                  ).length} / {selectedExam.documentsRequired.length}
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-emerald-400 text-[11px]">
-                  &gt; Integrity Check: Passed (Zero Schema Conflicts)
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 text-[11px]">
+                  &gt; This is a draft preview, not a submission package.
                   <br />
-                  &gt; Cutoff Score Check: 89.2% &gt;= 75.0% (Eligible)
-                  <br />
-                  &gt; Ready for Human Audit & Approval
+                  &gt; REGISTRA has not submitted data to the exam authority.
                 </div>
               </div>
             </div>
@@ -399,33 +387,29 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
               <div>
                 <h4 className="text-sm font-bold text-slate-900">Step 6: Comprehensive Field Audit</h4>
                 <p className="text-xs text-slate-500">
-                  Inspect every auto-mapped field before final authorization.
+                  Inspect mapped fields and review any missing or unverified values.
                 </p>
               </div>
 
               <div className="p-5 rounded-2xl bg-white border border-slate-200/80 space-y-3 text-xs">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="p-2.5 bg-slate-50 rounded-xl">
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block">Candidate</span>
                     <span className="font-bold text-slate-900">{profile.personalInfo.fullName}</span>
                   </div>
                   <div className="p-2.5 bg-slate-50 rounded-xl">
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block">12th Percentage</span>
-                    <span className="font-bold text-slate-900">{profile.academicInfo.class12.percentage}%</span>
+                    <span className="font-bold text-slate-900">{profile.academicInfo.class12.percentage > 0 ? `${profile.academicInfo.class12.percentage}%` : 'Not provided'}</span>
                   </div>
                   <div className="p-2.5 bg-slate-50 rounded-xl">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">City Choice 1</span>
-                    <span className="font-bold text-slate-900">{cityChoice1}</span>
-                  </div>
-                  <div className="p-2.5 bg-slate-50 rounded-xl">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Fee Payable</span>
-                    <span className="font-bold text-slate-900">₹{selectedExam.feeINR.general}</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Fields requiring review</span>
+                    <span className="font-bold text-slate-900">{fieldsForReview.length}</span>
                   </div>
                 </div>
 
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>All 25 application fields passed automated validity checks.</span>
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{mappedFieldsCount} of {mappedFields.length} configured fields have mapped values. Verify all details with the official exam authority.</span>
                 </div>
               </div>
             </div>
@@ -435,9 +419,9 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
           {currentStep === 7 && (
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Step 7: Student Final Authorization</h4>
+                <h4 className="text-sm font-bold text-slate-900">Step 7: Save Application Draft</h4>
                 <p className="text-xs text-slate-500">
-                  Review the non-automatic submission policy and unlock your pre-filled submission token.
+                  Saving here records an application draft in REGISTRA only. It does not submit anything to the exam authority.
                 </p>
               </div>
 
@@ -445,10 +429,10 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed space-y-2">
                 <div className="font-bold flex items-center gap-2 text-amber-800">
                   <Lock className="w-4 h-4" />
-                  <span>Human-in-the-Loop Barrier (Security Notice)</span>
+                  <span>Official submission status</span>
                 </div>
                 <p>
-                  As an ethical AI assistant, <strong>REGISTRA never automatically makes official fee payments or final government submissions</strong> without your explicit manual review. Final submission is completed under your direct control on the official {selectedExam.authority} portal.
+                  REGISTRA does not connect to {selectedExam.authority}'s application system, submit applications, or make payments. Use the official portal to complete the application yourself.
                 </p>
               </div>
 
@@ -462,18 +446,18 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
                     className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                   />
                   <label htmlFor="final_consent" className="text-xs text-slate-700 cursor-pointer">
-                    I confirm that I have reviewed the mapped fields for <strong>{selectedExam.name}</strong>. The academic percentages and personal identity accurately represent my certificates.
+                    I have reviewed the saved profile values and understand this only saves a REGISTRA draft for <strong>{selectedExam.name}</strong>.
                   </label>
                 </div>
 
-                {userApproved ? (
+                {savedApplicationId ? (
                   <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-2 animate-in fade-in">
                     <div className="font-bold flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Application Successfully Pre-Filled & Approved!</span>
+                      <span>REGISTRA draft saved</span>
                     </div>
                     <p className="text-xs text-emerald-800">
-                      Draft Token: <span className="font-mono font-bold">REG-2027-{selectedExam.id.toUpperCase()}-9401</span>
+                      Application ID: <span className="font-mono font-bold">{savedApplicationId}</span>
                     </p>
                     <div className="flex items-center gap-3 pt-1">
                       <a
@@ -482,7 +466,7 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
                         rel="noreferrer noopener"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm"
                       >
-                        <span>Open Official Portal to Submit</span>
+                        <span>Open Official Exam Portal</span>
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
@@ -494,7 +478,7 @@ export const SmartWorkflowModal: React.FC<SmartWorkflowModalProps> = ({ examId, 
                     className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Approve & Generate Application Summary</span>
+                    <span>Save Draft in REGISTRA</span>
                   </button>
                 )}
               </div>

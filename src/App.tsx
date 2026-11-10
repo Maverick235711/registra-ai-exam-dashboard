@@ -4,7 +4,6 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ToastContainer } from './components/ToastContainer';
 import { SmartWorkflowModal } from './components/SmartWorkflowModal';
-import { LogoShowcaseModal } from './components/LogoShowcaseModal';
 import { OcrVerificationModal } from './components/OcrVerificationModal';
 import { UserAccountModal } from './components/UserAccountModal';
 
@@ -21,17 +20,31 @@ import { SettingsView } from './views/SettingsView';
 
 const DashboardContent: React.FC = () => {
   const { 
+    currentUser,
+    isLoading,
+    dashboardError,
+    refreshUserData,
     activeTab, 
     workflowExamId, 
-    closeWorkflow, 
-    logoModalOpen, 
-    setLogoModalOpen,
+    closeWorkflow,
     ocrModalOpen,
     setOcrModalOpen,
     ocrTargetDocId,
     documents
   } = useApp();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-sm text-slate-500">
+        Restoring your secure session…
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <UserAccountModal />;
+  }
 
   const targetDoc = ocrTargetDocId ? documents.find(d => d.id === ocrTargetDocId) : null;
 
@@ -47,15 +60,31 @@ const DashboardContent: React.FC = () => {
 
         {/* Dynamic Main View */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {activeTab === 'overview' && <DashboardOverview />}
-          {activeTab === 'profile' && <MyProfileView />}
-          {activeTab === 'documents' && <MyDocumentsView />}
-          {activeTab === 'exams' && <FindExamsView />}
-          {activeTab === 'applications' && <MyApplicationsView />}
-          {activeTab === 'eligibility' && <EligibilityCheckerView />}
-          {activeTab === 'deadlines' && <DeadlineCalendarView />}
-          {activeTab === 'assistant' && <AiAssistantView />}
-          {activeTab === 'settings' && <SettingsView />}
+          {dashboardError ? (
+            <div role="alert" className="rounded-2xl border border-rose-200 bg-white p-8 text-center">
+              <h2 className="text-sm font-bold text-slate-900">Account data unavailable</h2>
+              <p className="mx-auto mt-2 max-w-lg text-xs text-slate-600">{dashboardError}</p>
+              <button
+                type="button"
+                onClick={() => void refreshUserData()}
+                className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+              >
+                Retry loading account data
+              </button>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'overview' && <DashboardOverview />}
+              {activeTab === 'profile' && <MyProfileView />}
+              {activeTab === 'documents' && <MyDocumentsView />}
+              {activeTab === 'exams' && <FindExamsView />}
+              {activeTab === 'applications' && <MyApplicationsView />}
+              {activeTab === 'eligibility' && <EligibilityCheckerView />}
+              {activeTab === 'deadlines' && <DeadlineCalendarView />}
+              {activeTab === 'assistant' && <AiAssistantView />}
+              {activeTab === 'settings' && <SettingsView />}
+            </>
+          )}
         </main>
 
         {/* Footer */}
@@ -65,7 +94,7 @@ const DashboardContent: React.FC = () => {
               REGISTRA · One Profile. Every Exam. Zero Repetition.
             </span>
             <span className="text-slate-400">
-              National Examination Application Assistant · Built for Google AI Studio
+              National Examination Application Assistant
             </span>
           </div>
         </footer>
@@ -78,12 +107,6 @@ const DashboardContent: React.FC = () => {
           onClose={closeWorkflow}
         />
       )}
-
-      {/* Official Brand Logo Showcase Modal */}
-      <LogoShowcaseModal
-        isOpen={logoModalOpen}
-        onClose={() => setLogoModalOpen(false)}
-      />
 
       {/* Real Gemini AI OCR Verification Studio */}
       <OcrVerificationModal

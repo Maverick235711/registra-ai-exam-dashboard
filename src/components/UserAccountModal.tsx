@@ -1,207 +1,232 @@
 import React, { useState } from 'react';
-import { 
-  X, 
-  User, 
-  Mail, 
-  ShieldCheck, 
-  CheckCircle2, 
-  LogIn, 
-  UserPlus, 
-  Building2, 
-  Calendar,
-  AlertCircle,
-  Sparkles,
-  ArrowRight
-} from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle, LockKeyhole, Mail, ShieldCheck, User, UserPlus, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { apiService } from '../services/apiService';
+
+type AuthMode = 'login' | 'register' | 'verify';
 
 export const UserAccountModal: React.FC = () => {
-  const { 
-    currentUser, 
-    availableUsers, 
-    switchUser, 
-    login, 
-    userModalOpen, 
-    setUserModalOpen,
-    profileCompletion 
-  } = useApp();
-
-  const [inputEmail, setInputEmail] = useState('');
+  const { currentUser, login, userModalOpen, setUserModalOpen, profileCompletion, authNotice, clearAuthNotice } = useApp();
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  if (!userModalOpen) return null;
+  if (!userModalOpen && currentUser) return null;
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputEmail.trim()) return;
+  const handleLoginSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    clearAuthNotice();
+    setErrorMessage('');
+    setSuccessMessage('');
     setIsSubmitting(true);
     try {
-      await login(inputEmail.trim());
-      setInputEmail('');
+      await login(email.trim(), password);
+      setPassword('');
       setUserModalOpen(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Login failed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSelectUser = async (userId: string) => {
+  const handleRegisterSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    clearAuthNotice();
+    setErrorMessage('');
+    setSuccessMessage('');
     setIsSubmitting(true);
     try {
-      await switchUser(userId);
-      setUserModalOpen(false);
+      const result = await apiService.register({ fullName: fullName.trim(), email: email.trim(), password, confirmPassword });
+      setMode('verify');
+      clearAuthNotice();
+      setSuccessMessage(result.message);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Registration failed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleVerifySubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    clearAuthNotice();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIsSubmitting(true);
+    try {
+      const result = await apiService.verifyEmail(email.trim(), otp.trim());
+      setMode('login');
+      clearAuthNotice();
+      setPassword('');
+      setConfirmPassword('');
+      setOtp('');
+      setSuccessMessage(`${result.message} You can now sign in.`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'OTP verification failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    clearAuthNotice();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIsSubmitting(true);
+    try {
+      const result = await apiService.resendOtp(email.trim());
+      setSuccessMessage(result.message);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not resend the OTP. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const switchMode = (nextMode: AuthMode) => {
+    clearAuthNotice();
+    setMode(nextMode);
+    setErrorMessage('');
+    setSuccessMessage('');
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-              <User className="w-5 h-5" />
+              {mode === 'register' ? <UserPlus className="w-5 h-5" /> : <User className="w-5 h-5" />}
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">User Account & Authentication</h3>
-              <p className="text-xs text-slate-500">Each account accesses their own private records & documents</p>
+              <h3 className="text-sm font-bold text-slate-900">
+                {mode === 'verify' ? 'Verify your email' : mode === 'register' ? 'Create your REGISTRA account' : 'Sign in to REGISTRA'}
+              </h3>
+              <p className="text-xs text-slate-500">Your account securely accesses your private records and documents</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setUserModalOpen(false)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {currentUser && (
+            <button type="button" onClick={() => setUserModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Close account dialog">
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* Body */}
         <div className="p-5 space-y-5 overflow-y-auto">
-          {/* Active User Card */}
+          {!currentUser && authNotice && (
+            <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              {authNotice}
+            </div>
+          )}
           {currentUser && (
             <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50/80 via-blue-50/60 to-slate-50 border border-indigo-100/80">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                  Currently Authenticated
-                </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  currentUser.isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {currentUser.isVerified ? 'Verified Student' : 'Candidate Account'}
+                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Currently authenticated</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  <ShieldCheck className="w-3 h-3 inline mr-1" />Verified
                 </span>
               </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
-                  {currentUser.fullName ? currentUser.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'ST'}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-slate-900 truncate">
-                    {currentUser.fullName || 'Student Applicant'}
-                  </div>
-                  <div className="text-xs text-slate-600 truncate flex items-center gap-1.5 mt-0.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>{currentUser.email}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t border-indigo-100/60 grid grid-cols-2 gap-2 text-[11px]">
-                <div>
-                  <span className="text-slate-400">User ID:</span>{' '}
-                  <span className="font-mono text-slate-700">{currentUser.id}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Profile Completion:</span>{' '}
-                  <span className="font-bold text-indigo-700">{profileCompletion.overall}%</span>
-                </div>
-              </div>
+              <div className="text-sm font-bold text-slate-900">{currentUser.fullName}</div>
+              <div className="text-xs text-slate-600 mt-0.5">{currentUser.email}</div>
+              <div className="text-[11px] text-slate-500 mt-2">Profile completion: {profileCompletion.overall}%</div>
             </div>
           )}
 
-          {/* Quick Account Switcher */}
-          <div>
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-2">
-              Switch Test Account (Real Partitioned Database)
-            </label>
-            <div className="space-y-2">
-              {availableUsers.map((u) => {
-                const isSelected = u.id === currentUser?.id;
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => handleSelectUser(u.id)}
-                    disabled={isSubmitting}
-                    className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
-                      isSelected 
-                        ? 'border-indigo-500 bg-indigo-50/40 ring-1 ring-indigo-500/30' 
-                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                        isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {u.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
-                          <span>{u.fullName}</span>
-                          {u.id === 'usr_26ucc005' && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-semibold">
-                              Current User
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-slate-500 truncate">{u.email}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] text-slate-400">{u.role?.split(' ')[0]}</span>
-                      {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                      ) : (
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+          {mode !== 'verify' && (
+            <div className="flex rounded-xl bg-slate-100 p-1">
+              <button type="button" onClick={() => switchMode('login')} className={`flex-1 rounded-lg py-2 text-xs font-semibold ${mode === 'login' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>
+                Sign in
+              </button>
+              <button type="button" onClick={() => switchMode('register')} className={`flex-1 rounded-lg py-2 text-xs font-semibold ${mode === 'register' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>
+                Create account
+              </button>
             </div>
-          </div>
+          )}
 
-          {/* Or Sign in with custom email */}
-          <div className="pt-2 border-t border-slate-100">
+          {errorMessage && (
+            <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+          {successMessage && (
+            <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {mode === 'login' && (
             <form onSubmit={handleLoginSubmit} className="space-y-3">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Sign in with Any Student Email
+              <label className="block text-xs font-bold text-slate-700">
+                Email address
+                <span className="mt-1.5 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 focus-within:border-indigo-500 focus-within:bg-white">
+                  <Mail className="w-4 h-4 text-slate-400" />
+                  <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required className="w-full bg-transparent text-xs font-normal outline-none" placeholder="you@example.com" />
+                </span>
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={inputEmail}
-                  onChange={(e) => setInputEmail(e.target.value)}
-                  placeholder="e.g. your.email@university.edu"
-                  required
-                  className="flex-1 px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !inputEmail.trim()}
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50 shrink-0"
-                >
-                  Sign In / Create
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                New emails automatically create a fresh isolated student profile in the database.
-              </p>
+              <label className="block text-xs font-bold text-slate-700">
+                Password
+                <span className="mt-1.5 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 focus-within:border-indigo-500 focus-within:bg-white">
+                  <LockKeyhole className="w-4 h-4 text-slate-400" />
+                  <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required className="w-full bg-transparent text-xs font-normal outline-none" placeholder="Your password" />
+                </span>
+              </label>
+              <button type="submit" disabled={isSubmitting || !email.trim() || !password} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50">
+                {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                {isSubmitting ? 'Signing in…' : 'Sign in'}
+              </button>
             </form>
-          </div>
+          )}
+
+          {mode === 'register' && (
+            <form onSubmit={handleRegisterSubmit} className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700">
+                Full name
+                <input type="text" autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} required minLength={2} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-normal outline-none focus:border-indigo-500 focus:bg-white" placeholder="Your full name" />
+              </label>
+              <label className="block text-xs font-bold text-slate-700">
+                Email address
+                <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-normal outline-none focus:border-indigo-500 focus:bg-white" placeholder="you@example.com" />
+              </label>
+              <label className="block text-xs font-bold text-slate-700">
+                Password
+                <input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-normal outline-none focus:border-indigo-500 focus:bg-white" placeholder="8+ characters, uppercase and number" />
+              </label>
+              <label className="block text-xs font-bold text-slate-700">
+                Confirm password
+                <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-normal outline-none focus:border-indigo-500 focus:bg-white" placeholder="Re-enter your password" />
+              </label>
+              <button type="submit" disabled={isSubmitting} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50">
+                {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                {isSubmitting ? 'Creating account…' : 'Create account and send OTP'}
+              </button>
+            </form>
+          )}
+
+          {mode === 'verify' && (
+            <form onSubmit={handleVerifySubmit} className="space-y-3">
+              <p className="text-xs text-slate-600">Enter the 6-digit code sent to <strong>{email}</strong>.</p>
+              <label className="block text-xs font-bold text-slate-700">
+                Verification code
+                <input type="text" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} required minLength={6} maxLength={6} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm tracking-[0.3em] font-semibold outline-none focus:border-indigo-500 focus:bg-white" placeholder="000000" />
+              </label>
+              <button type="submit" disabled={isSubmitting || otp.length !== 6} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50">
+                {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                {isSubmitting ? 'Verifying…' : 'Verify email'}
+              </button>
+              <button type="button" onClick={handleResendOtp} disabled={isSubmitting} className="w-full text-xs font-semibold text-indigo-700 hover:text-indigo-900 disabled:opacity-50">
+                Resend verification code
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

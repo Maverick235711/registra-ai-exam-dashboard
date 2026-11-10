@@ -13,7 +13,6 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { examDatabase } from '../data/mockData';
 import { evaluateEligibility } from '../utils/eligibilityEngine';
 
 export const EligibilityCheckerView: React.FC = () => {
@@ -26,13 +25,24 @@ export const EligibilityCheckerView: React.FC = () => {
     exams
   } = useApp();
 
-  const activeExams = exams && exams.length > 0 ? exams : examDatabase;
+  const activeExams = exams;
 
   const [activeExamId, setActiveExamId] = useState<string>(
-    selectedExamForEligibility || 'exam_jee_main'
+    selectedExamForEligibility || ''
   );
 
   const selectedExam = activeExams.find(e => e.id === activeExamId) || activeExams[0];
+  if (!selectedExam) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+        <AlertCircle className="mx-auto mb-3 h-8 w-8 text-slate-400" />
+        <h2 className="text-sm font-bold text-slate-800">Eligibility data unavailable</h2>
+        <p className="mx-auto mt-2 max-w-lg text-xs text-slate-500">
+          There are no verified examination records with eligibility criteria available to evaluate.
+        </p>
+      </div>
+    );
+  }
   const evalResult = evaluateEligibility(profile, selectedExam);
 
   return (
@@ -43,11 +53,11 @@ export const EligibilityCheckerView: React.FC = () => {
           <div className="flex items-center gap-2 mb-1">
             <h2 className="text-lg font-bold text-slate-900">AI Eligibility Evaluation Engine</h2>
             <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
-              Autonomous Verification
+              Profile-Based Assessment
             </span>
           </div>
           <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
-            Evaluates your 10+2 marks, subjects, age bracket, and category reservation against official gazette brochures published by conducting authorities.
+            Compares saved profile information against criteria recorded for this examination. Confirm all requirements against the official notice.
           </p>
         </div>
 
@@ -93,7 +103,9 @@ export const EligibilityCheckerView: React.FC = () => {
         {/* Left Column: Overall Status Card & Rationale */}
         <div className="space-y-6">
           <div className={`p-6 rounded-2xl border ${
-            evalResult.isEligible 
+            !evalResult.sufficientInformation
+              ? 'bg-amber-950/10 border-amber-200/90'
+              : evalResult.isEligible
               ? 'bg-emerald-950/10 border-emerald-200/90' 
               : 'bg-rose-950/10 border-rose-200/90'
           } shadow-sm space-y-4`}>
@@ -107,7 +119,11 @@ export const EligibilityCheckerView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              {evalResult.isEligible ? (
+              {!evalResult.sufficientInformation ? (
+                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/30">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+              ) : evalResult.isEligible ? (
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
@@ -117,8 +133,10 @@ export const EligibilityCheckerView: React.FC = () => {
                 </div>
               )}
               <div>
-                <h3 className={`text-lg font-extrabold ${evalResult.isEligible ? 'text-emerald-900' : 'text-rose-900'}`}>
-                  {evalResult.isEligible ? 'Candidate Eligible' : 'Criteria Not Met'}
+                <h3 className={`text-lg font-extrabold ${
+                  !evalResult.sufficientInformation ? 'text-amber-900' : evalResult.isEligible ? 'text-emerald-900' : 'text-rose-900'
+                }`}>
+                  {!evalResult.sufficientInformation ? 'Insufficient Information' : evalResult.isEligible ? 'Criteria Met' : 'Criteria Not Met'}
                 </h3>
                 <p className="text-xs text-slate-600">
                   Target: {selectedExam.name} ({selectedExam.authority})

@@ -1,445 +1,288 @@
-import React, { useState } from 'react';
-import { 
-  FileText, 
-  Upload, 
-  Sparkles, 
-  CheckCircle2, 
-  AlertCircle, 
-  Eye, 
-  Trash2, 
-  RefreshCw, 
-  Clock, 
-  ShieldCheck, 
-  X, 
-  FileCheck,
-  Download,
-  Check
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Download, Eye, FileText, RefreshCw, ScanSearch, Trash2, Upload, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { DocumentRecord } from '../types';
+import { DocumentRecord, DocumentType } from '../types';
+import { REQUIRED_PROFILE_DOCUMENTS } from '../utils/eligibilityEngine';
+
+const requiredDocumentDetails: Record<DocumentType, string> = {
+  class10_marksheet: 'Class 10 Marksheet',
+  class12_marksheet: 'Class 12 Marksheet',
+  photograph: 'Photograph',
+  signature: 'Signature',
+  identity_proof: 'Identity Proof',
+  aadhaar_card: 'Aadhaar Card',
+  passport: 'Passport',
+  category_certificate: 'Category Certificate',
+  domicile_certificate: 'Domicile Certificate',
+  income_certificate: 'Income Certificate',
+  transfer_certificate: 'Transfer Certificate',
+  educational_certificate: 'Educational Certificate',
+};
+
+const supportedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+const ocrSupportedTypes = new Set<DocumentType>([
+  'class10_marksheet', 'class12_marksheet', 'aadhaar_card', 'passport', 'identity_proof',
+  'category_certificate', 'domicile_certificate', 'income_certificate', 'transfer_certificate',
+  'educational_certificate',
+]);
+const uploadAccept = '.pdf,.jpg,.jpeg,.png,.webp';
+
+const formatUploadDate = (date: string | undefined) => {
+  if (!date) return 'Upload date unavailable';
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? 'Upload date unavailable' : `Uploaded ${parsed.toLocaleDateString()}`;
+};
 
 export const MyDocumentsView: React.FC = () => {
-  const { 
-    documents, 
-    updateDocument, 
-    triggerAiExtraction, 
-    isExtractingDocId, 
-    openOcrStudio,
-    addToast 
-  } = useApp();
-
+  const { documents, uploadDocument, deleteDocument, openOcrStudio, addToast } = useApp();
   const [selectedDocForPreview, setSelectedDocForPreview] = useState<DocumentRecord | null>(null);
-  const [dragActiveId, setDragActiveId] = useState<string | null>(null);
-  const [uploadProgressMap, setUploadProgressMap] = useState<Record<string, number>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [uploadingDocIds, setUploadingDocIds] = useState<Set<string>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
 
-  const simulateFileUpload = (docId: string, file: File) => {
-    setUploadProgressMap(prev => ({ ...prev, [docId]: 15 }));
-    
-    const interval = setInterval(() => {
-      setUploadProgressMap(prev => {
-        const current = prev[docId] || 0;
-        if (current >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            updateDocument(docId, {
-              status: 'Uploaded',
-              fileName: file.name,
-              fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-              uploadedAt: new Date().toISOString().split('T')[0],
-              confidenceScore: undefined,
-            });
-            setUploadProgressMap(p => {
-              const copy = { ...p };
-              delete copy[docId];
-              return copy;
-            });
-            addToast(`Successfully uploaded ${file.name}`, 'success');
-          }, 400);
-          return prev;
-        }
-        return { ...prev, [docId]: current + 25 };
+  const displayDocuments = useMemo<DocumentRecord[]>(() => {
+    const uploaded = documents.filter((document) => Boolean(document.fileUrl));
+    const uploadedTypes = new Set(uploaded.map((document) => document.type));
+    const missingRequired = REQUIRED_PROFILE_DOCUMENTS
+      .filter((type) => !uploadedTypes.has(type))
+      .map((type) => ({
+        id: `missing_${type}`,
+        type,
+        title: requiredDocumentDetails[type],
+        description: '',
+        requiredFor: [],
+        status: 'Missing' as const,
+      }));
+    return [...uploaded, ...missingRequired];
+  }, [documents]);
+
+  const uploadedCount = documents.filter((document) => Boolean(document.fileUrl)).length;
+  const missingRequiredCount = REQUIRED_PROFILE_DOCUMENTS.filter(
+    (type) => !documents.some((document) => document.type === type && Boolean(document.fileUrl)),
+  ).length;
+
+  const uploadFile = async (doc: DocumentRecord, file: File) => {
+    if (uploadingDocIds.has(doc.id)) return;
+    if (!supportedTypes.includes(file.type)) {
+      addToast('Unsupported file. Choose a PDF, JPG, PNG, or WEBP document.', 'warning');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('Files must be 10 MB or smaller.', 'warning');
+      return;
+    }
+    setUploadingDocIds((previous) => new Set(previous).add(doc.id));
+    setUploadProgress((previous) => ({ ...previous, [doc.id]: 0 }));
+    try {
+      await uploadDocument(file, doc.type, (percent) => {
+        setUploadProgress((previous) => ({ ...previous, [doc.id]: percent }));
       });
-    }, 150);
-  };
-
-  const handleFileInput = (docId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      simulateFileUpload(docId, e.target.files[0]);
+    } catch {
+      // The upload action reports failures through the shared toast notifications.
+    } finally {
+      setUploadingDocIds((previous) => {
+        const next = new Set(previous);
+        next.delete(doc.id);
+        return next;
+      });
+      setUploadProgress((previous) => {
+        const next = { ...previous };
+        delete next[doc.id];
+        return next;
+      });
     }
   };
 
-  const handleDrop = (docId: string, e: React.DragEvent) => {
-    e.preventDefault();
-    setDragActiveId(null);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      simulateFileUpload(docId, e.dataTransfer.files[0]);
-    }
+  const handleFileInput = (doc: DocumentRecord, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) void uploadFile(doc, file);
+    event.target.value = '';
   };
 
-  const handleDelete = (docId: string) => {
-    updateDocument(docId, {
-      status: 'Missing',
-      fileName: '',
-      fileSize: '',
-      uploadedAt: '',
-      extractedData: undefined,
-      confidenceScore: undefined,
-      fileUrl: '',
-    });
+  const handleDelete = async (docId: string) => {
+    try {
+      await deleteDocument(docId);
+      setSelectedDocForPreview(null);
+    } catch {
+      // The delete action reports failures through the shared toast notifications.
+    }
     setConfirmDeleteId(null);
-    addToast('Document removed from local vault', 'info');
   };
+
+  const downloadUrl = (document: DocumentRecord) => document.fileUrl
+    ? `${document.fileUrl}${document.fileUrl.includes('?') ? '&' : '?'}download=1`
+    : undefined;
 
   return (
-    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
-      {/* Header Banner */}
-      <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div className="space-y-6">
+      <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-lg font-bold text-slate-900">Document Vault & AI Verification</h2>
-            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Zero-Repetition Storage
-            </span>
+          <h2 className="text-lg font-semibold text-[#172554]">Document Vault</h2>
+          <p className="mt-1 text-sm text-slate-600">View and manage the documents saved to your account.</p>
+        </div>
+        <div className="flex gap-5 text-sm">
+          <div>
+            <span className="block font-semibold tabular-nums text-slate-900">{uploadedCount}</span>
+            <span className="text-xs text-slate-500">Uploaded</span>
           </div>
-          <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
-            Upload your mandatory examination documents once. Registra extracts roll numbers, aggregate marks, 
-            and certificates to pre-fill entrance applications automatically.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <div className="text-xs font-bold text-slate-900 tabular-nums">
-              {documents.filter(d => d.status === 'Verified').length} / {documents.length} Verified
-            </div>
-            <div className="text-[11px] text-emerald-600 font-medium">Model: gemini-3.8-flash</div>
+          <div>
+            <span className="block font-semibold tabular-nums text-slate-900">{missingRequiredCount}</span>
+            <span className="text-xs text-slate-500">Required missing</span>
           </div>
-
-          <button
-            type="button"
-            onClick={() => openOcrStudio()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-sm shadow-indigo-600/20 hover:shadow-md active:scale-[0.98] transition-all whitespace-nowrap"
-          >
-            <Sparkles className="w-4 h-4 text-indigo-100" />
-            <span>Scan with Gemini AI</span>
-          </button>
         </div>
-      </div>
+      </section>
 
-      {/* Gemini AI OCR Engine Bar */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-slate-800">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
-              Official Gemini 3.8 Flash Engine
-            </span>
-            <span className="text-xs font-semibold text-slate-300">
-              Multimodal Vision & Structured Character Recognition
-            </span>
-          </div>
-          <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-            Upload any academic marksheet, government identity proof, or caste/domicile certificate. Gemini extracts personal & academic details with mandatory per-field confidence scoring (0–100).
-          </p>
+      {displayDocuments.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+          <FileText className="mx-auto h-8 w-8 text-slate-400" />
+          <p className="mt-3 text-sm font-medium text-slate-800">No documents in your vault</p>
+          <p className="mt-1 text-xs text-slate-500">Upload a document when an application requires it.</p>
         </div>
-
-        {/* Confidence Tier Legend */}
-        <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold bg-white/5 p-2 rounded-xl border border-white/10 shrink-0">
-          <span className="text-slate-400 uppercase tracking-wider text-[9px] px-1">Confidence:</span>
-          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-            90–100 High
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-            70–89 Review
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-            0–69 Low
-          </span>
-        </div>
-      </div>
-
-      {/* Document Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {documents.map((doc) => {
-          const isUploading = uploadProgressMap[doc.id] !== undefined;
-          const isExtracting = isExtractingDocId === doc.id;
-          const isVerified = doc.status === 'Verified';
-          const isUploaded = doc.status === 'Uploaded';
-          const isMissing = doc.status === 'Missing';
-          const isPending = doc.status === 'Pending Review';
-
-          return (
-            <div
-              key={doc.id}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragActiveId(doc.id);
-              }}
-              onDragLeave={() => setDragActiveId(null)}
-              onDrop={(e) => handleDrop(doc.id, e)}
-              className={`flex flex-col justify-between p-5 rounded-2xl bg-white border transition-all duration-200 ${
-                dragActiveId === doc.id
-                  ? 'border-indigo-500 ring-2 ring-indigo-100 bg-indigo-50/20'
-                  : isVerified
-                  ? 'border-slate-200/90 shadow-sm hover:border-slate-300'
-                  : isMissing
-                  ? 'border-dashed border-slate-300 bg-slate-50/60'
-                  : 'border-slate-200 shadow-sm'
-              }`}
-            >
-              <div>
-                {/* Card Top: Title & Status */}
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                      isVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-900 leading-tight">
-                        {doc.title}
-                      </h3>
-                      <span className="text-[10px] text-slate-400">
-                        {doc.fileName ? doc.fileSize : 'No file chosen'}
-                      </span>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {displayDocuments.map((doc) => {
+            const isUploading = uploadingDocIds.has(doc.id);
+            const hasFile = Boolean(doc.fileUrl);
+            const canScan = ocrSupportedTypes.has(doc.type);
+            const isPdf = doc.mimeType === 'application/pdf' || doc.fileName?.toLowerCase().endsWith('.pdf');
+            const inputId = `document-upload-${doc.id}`;
+            return (
+              <article key={doc.id} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#4563F5]">
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-slate-900">{doc.title || requiredDocumentDetails[doc.type]}</h3>
+                      <p className="truncate text-xs text-slate-500">{doc.fileName || requiredDocumentDetails[doc.type]}</p>
                     </div>
                   </div>
-
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                    isVerified
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : isUploaded
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : isPending
-                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${
+                    doc.status === 'Verified' ? 'bg-emerald-50 text-emerald-700' :
+                    doc.status === 'Pending Review' ? 'bg-amber-50 text-amber-700' :
+                    hasFile ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
                   }`}>
-                    {doc.status}
+                    {hasFile ? doc.status : 'Missing'}
                   </span>
                 </div>
 
-                <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-                  {doc.description}
-                </p>
+                <p className="mt-3 text-xs text-slate-500">{formatUploadDate(doc.uploadedAt)}</p>
+                {doc.fileSize && <p className="mt-1 text-xs text-slate-500">{doc.fileSize}</p>}
 
-                {/* Upload Progress Bar if currently uploading */}
-                {isUploading && (
-                  <div className="mb-3 space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-500 font-medium">
-                      <span>Uploading document...</span>
-                      <span>{uploadProgressMap[doc.id]}%</span>
+                {isUploading ? (
+                  <div className="mt-4" aria-live="polite">
+                    <div className="mb-1 flex justify-between text-xs text-slate-600">
+                      <span>Uploading</span><span>{uploadProgress[doc.id] ?? 0}%</span>
                     </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                      <div
-                        className="bg-indigo-600 h-1.5 rounded-full transition-all duration-150"
-                        style={{ width: `${uploadProgressMap[doc.id]}%` }}
-                      />
-                    </div>
+                    <progress value={uploadProgress[doc.id] ?? 0} max="100" className="h-1.5 w-full accent-[#4563F5]" aria-label="Upload progress" />
                   </div>
-                )}
-
-                {/* Visual Thumbnail or Dropzone Area */}
-                {doc.fileUrl && !isUploading ? (
-                  <div 
-                    onClick={() => setSelectedDocForPreview(doc)}
-                    className="relative group rounded-xl overflow-hidden border border-slate-200 mb-3 cursor-pointer h-28 bg-slate-900 flex items-center justify-center"
-                  >
-                    <img
-                      src={doc.fileUrl}
-                      alt={doc.title}
-                      className="w-full h-full object-cover opacity-85 group-hover:opacity-95 group-hover:scale-105 transition-all duration-300"
-                    />
-                    <div className="absolute inset-0 bg-slate-950/40 group-hover:bg-slate-950/20 flex items-center justify-center transition-colors">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/60 text-white text-[11px] font-medium backdrop-blur-sm shadow-md">
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Preview Document</span>
-                      </span>
-                    </div>
-                  </div>
-                ) : !isUploading && (
-                  <label className="border border-dashed border-slate-300 rounded-xl p-4 mb-3 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-indigo-50/30 hover:border-indigo-400 transition-colors">
-                    <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                    <span className="text-xs font-semibold text-slate-700">Drop file or click to upload</span>
-                    <span className="text-[10px] text-slate-400 mt-0.5">PDF, JPG, PNG up to 5MB</span>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className="hidden"
-                      onChange={(e) => handleFileInput(doc.id, e)}
-                    />
-                  </label>
-                )}
-
-                {/* Extracted Key-Value Preview pill */}
-                {doc.extractedData && (
-                  <div className="mb-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] space-y-1">
-                    <div className="flex items-center justify-between text-slate-700 font-semibold mb-1">
-                      <span className="flex items-center gap-1 text-indigo-600">
-                        <Sparkles className="w-3 h-3" />
-                        <span>AI Extracted Fields</span>
-                      </span>
-                      {doc.confidenceScore && (
-                        <span className="text-[10px] text-emerald-600 font-mono">
-                          {doc.confidenceScore}% match
-                        </span>
-                      )}
-                    </div>
-                    {Object.entries(doc.extractedData).slice(0, 3).map(([key, val]) => (
-                      <div key={key} className="flex justify-between text-slate-600">
-                        <span className="text-slate-400 truncate max-w-[120px]">{key}:</span>
-                        <span className="font-medium text-slate-800 truncate max-w-[140px]">{String(val)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Card Footer Actions */}
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
+                ) : hasFile ? (
                   <button
                     type="button"
-                    disabled={isUploading}
-                    onClick={() => openOcrStudio(doc.id)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-all"
+                    onClick={() => setSelectedDocForPreview(doc)}
+                    className="mt-4 flex h-28 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-[#4563F5] hover:bg-blue-50"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{doc.status === 'Verified' ? 'Verify & Edit' : 'AI Extract'}</span>
+                    {isPdf ? <FileText className="mr-2 h-5 w-5" /> : <Eye className="mr-2 h-4 w-4" />}
+                    Preview document
                   </button>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <label className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors" title="Replace file">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className="hidden"
-                      onChange={(e) => handleFileInput(doc.id, e)}
-                    />
+                ) : (
+                  <label htmlFor={inputId} className="mt-4 flex h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center hover:border-[#4563F5]">
+                    <Upload className="mb-2 h-5 w-5 text-slate-400" />
+                    <span className="text-xs font-medium text-slate-700">Upload document</span>
+                    <span className="mt-1 text-[11px] text-slate-500">PDF, JPG, PNG, WEBP · 10 MB max</span>
                   </label>
-                  {doc.fileName && (
+                )}
+                <input
+                  id={inputId}
+                  type="file"
+                  accept={uploadAccept}
+                  className="sr-only"
+                  disabled={isUploading}
+                  onChange={(event) => handleFileInput(doc, event)}
+                />
+
+                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                  {canScan && (
                     <button
                       type="button"
-                      onClick={() => setConfirmDeleteId(doc.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="Delete file"
+                      disabled={!hasFile || isUploading}
+                      onClick={() => openOcrStudio(doc.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-[#4563F5] hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-400"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <ScanSearch className="h-4 w-4" /> Scan with AI
                     </button>
                   )}
+                  <div className="flex items-center gap-1">
+                    {hasFile && (
+                      <>
+                        <a
+                          href={downloadUrl(doc)}
+                          download={doc.fileName}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                          title="Download document"
+                          aria-label={`Download ${doc.title}`}
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                        <label htmlFor={inputId} className="cursor-pointer rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900" title="Replace document" aria-label={`Replace ${doc.title}`}>
+                          <RefreshCw className="h-4 w-4" />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(doc.id)}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                          title="Delete document"
+                          aria-label={`Delete ${doc.title}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Delete Confirmation Modal */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900 mb-2">Delete this document?</h3>
-            <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-              This will remove the file and reset its verified status. You will need to re-upload it to apply for exams requiring this proof.
-            </p>
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteId(null)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
-              >
-                Keep File
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(confirmDeleteId)}
-                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
-              >
-                Delete
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-document-title">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h3 id="delete-document-title" className="text-sm font-semibold text-slate-900">Delete this document?</h3>
+            <p className="mt-2 text-xs text-slate-600">This removes the uploaded file and its saved extraction from your vault.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmDeleteId(null)} className="rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-100">Cancel</button>
+              <button type="button" onClick={() => void handleDelete(confirmDeleteId)} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Delete</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Document Detail Preview Modal */}
       {selectedDocForPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-100">
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">{selectedDocForPreview.title}</h3>
-                <p className="text-[11px] text-slate-500">
-                  {selectedDocForPreview.fileName} · {selectedDocForPreview.fileSize} · Verified Status: {selectedDocForPreview.status}
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+          <section className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+            <header className="flex items-center justify-between border-b border-slate-200 p-4">
+              <div className="min-w-0">
+                <h3 id="document-preview-title" className="truncate text-sm font-semibold text-slate-900">{selectedDocForPreview.title}</h3>
+                <p className="mt-1 text-xs text-slate-500">{selectedDocForPreview.fileName} · {selectedDocForPreview.status} · {formatUploadDate(selectedDocForPreview.uploadedAt)}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDocForPreview(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-4">
-              {selectedDocForPreview.fileUrl ? (
-                <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center max-h-80">
-                  <img
-                    src={selectedDocForPreview.fileUrl}
-                    alt={selectedDocForPreview.title}
-                    className="max-h-80 w-auto object-contain"
-                  />
-                </div>
+              <button type="button" onClick={() => setSelectedDocForPreview(null)} aria-label="Close preview" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+            </header>
+            <div className="min-h-64 flex-1 overflow-auto bg-slate-50 p-3 sm:p-5">
+              {selectedDocForPreview.mimeType === 'application/pdf' || selectedDocForPreview.fileName?.toLowerCase().endsWith('.pdf') ? (
+                <iframe title={`${selectedDocForPreview.title} preview`} src={selectedDocForPreview.fileUrl} className="h-[65vh] w-full rounded-lg border border-slate-200 bg-white" />
               ) : (
-                <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                  Digital specimen registered in local storage.
-                </div>
-              )}
-
-              {/* Extracted Metadata Inspection */}
-              {selectedDocForPreview.extractedData && (
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <FileCheck className="w-4 h-4 text-emerald-600" />
-                      <span>Extracted Machine-Readable Verification Payload</span>
-                    </span>
-                    <span className="text-[10px] text-emerald-700 bg-emerald-100/60 font-semibold px-2 py-0.5 rounded-full">
-                      Confidence: {selectedDocForPreview.confidenceScore || 99}%
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {Object.entries(selectedDocForPreview.extractedData).map(([key, value]) => (
-                      <div key={key} className="p-2 bg-white rounded-lg border border-slate-100">
-                        <span className="text-[10px] uppercase font-semibold text-slate-400 block">{key}</span>
-                        <span className="text-slate-800 font-medium font-mono text-xs">{String(value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <img src={selectedDocForPreview.fileUrl} alt={selectedDocForPreview.title} className="mx-auto max-h-[65vh] max-w-full object-contain" />
               )}
             </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-              <span className="text-[11px] text-slate-500">
-                Encrypted in browser storage · Gemini API Ready
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedDocForPreview(null)}
-                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl"
-              >
-                Close Preview
-              </button>
-            </div>
-          </div>
+            <footer className="flex justify-end border-t border-slate-200 p-3">
+              <a href={downloadUrl(selectedDocForPreview)} download={selectedDocForPreview.fileName} className="inline-flex items-center gap-2 rounded-lg bg-[#4563F5] px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+                <Download className="h-4 w-4" /> Download
+              </a>
+            </footer>
+          </section>
         </div>
       )}
     </div>

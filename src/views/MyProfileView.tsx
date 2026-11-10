@@ -16,9 +16,20 @@ import {
   Award
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ExamCategory } from '../types';
+
+const examCategories: ExamCategory[] = [
+  'Engineering',
+  'Medical',
+  'Management',
+  'Civil Services',
+  'Undergraduate',
+  'Government & Banking',
+  'Teaching & Eligibility',
+];
 
 export const MyProfileView: React.FC = () => {
-  const { currentUser, profile, updateProfile, addToast, profileCompletion } = useApp();
+  const { currentUser, profile, documents, updateProfile, addToast, profileCompletion } = useApp();
   const [activeSubTab, setActiveSubTab] = useState<'personal' | 'academic'>('personal');
 
   // Form local states
@@ -69,7 +80,7 @@ export const MyProfileView: React.FC = () => {
                 currentUser?.isVerified ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
               }`}>
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>{currentUser?.isVerified ? 'DigiLocker Verified' : 'Standard Candidate Profile'}</span>
+                <span>{currentUser?.isVerified ? 'Email Verified' : 'Email Unverified'}</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mb-2">
@@ -133,7 +144,7 @@ export const MyProfileView: React.FC = () => {
         >
           <User className="w-4 h-4" />
           <span>Personal Information</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">100%</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700">{profileCompletion.sections.personal.score}%</span>
         </button>
 
         <button
@@ -147,7 +158,7 @@ export const MyProfileView: React.FC = () => {
         >
           <GraduationCap className="w-4 h-4" />
           <span>Academic Information</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">100%</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700">{profileCompletion.sections.academic.score}%</span>
         </button>
       </div>
 
@@ -419,8 +430,8 @@ export const MyProfileView: React.FC = () => {
                     Used across all national portals to verify birthdate and foundational qualifications.
                   </p>
                 </div>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100">
-                  Verified Marksheet
+                <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                  {documents.find((document) => document.type === 'class10_marksheet' && document.fileUrl)?.status ?? 'No Marksheet Uploaded'}
                 </span>
               </div>
 
@@ -515,8 +526,11 @@ export const MyProfileView: React.FC = () => {
                     Primary criteria for JEE, NEET, CUET, and BITSAT eligibility evaluation.
                   </p>
                 </div>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100">
-                  {formData.academicInfo.class12.status} ({formData.academicInfo.class12.percentage}%)
+                <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                  {formData.academicInfo.class12.status || 'Status not provided'}
+                  {formData.academicInfo.class12.percentage > 0
+                    ? ` (${formData.academicInfo.class12.percentage}%)`
+                    : ' · Percentage not provided'}
                 </span>
               </div>
 
@@ -649,6 +663,38 @@ export const MyProfileView: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-7 shadow-sm space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-1">
+                  Preferred Examination Categories
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Optional preferences rank eligible recommendations; they do not affect eligibility results.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {examCategories.map((category) => (
+                  <label key={category} className="flex items-center gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      disabled={!isEditing}
+                      checked={(formData.preferredExamCategories ?? []).includes(category)}
+                      onChange={(event) => {
+                        const selected = formData.preferredExamCategories ?? [];
+                        setFormData({
+                          ...formData,
+                          preferredExamCategories: event.target.checked
+                            ? [...new Set([...selected, category])]
+                            : selected.filter((item) => item !== category),
+                        });
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    {category}
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -666,7 +712,7 @@ export const MyProfileView: React.FC = () => {
               className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition-all"
             >
               <Save className="w-4 h-4" />
-              <span>Save & Verify Profile</span>
+              <span>Save Profile Changes</span>
             </button>
           </div>
         )}

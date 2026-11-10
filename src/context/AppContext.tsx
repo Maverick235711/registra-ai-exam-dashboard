@@ -2,14 +2,15 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { 
   StudentProfile, 
   DocumentRecord, 
+  DocumentType,
+  ExtractedFieldData,
   ApplicationRecord, 
   ExamItem, 
   UserAccount, 
-  DashboardStats 
+  DashboardStats,
 } from '../types';
-import { calculateProfileCompletion } from '../utils/eligibilityEngine';
-import { apiService, getActiveUserId, setActiveUserId } from '../services/apiService';
-import { initialProfile, initialDocuments, initialApplications, examDatabase } from '../data/mockData';
+import { calculateProfileCompletion, createEmptyProfile } from '../utils/eligibilityEngine';
+import { apiService } from '../services/apiService';
 
 export interface ToastItem {
   id: string;
@@ -29,11 +30,13 @@ export interface NotificationItem {
 interface AppContextType {
   // Authentication & Users
   currentUser: UserAccount | null;
-  availableUsers: UserAccount[];
-  switchUser: (userId: string) => Promise<void>;
-  login: (email: string) => Promise<void>;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
   isLoading: boolean;
+  dashboardError: string;
+  refreshUserData: () => Promise<void>;
+  authNotice: string;
+  clearAuthNotice: () => void;
 
   // Student Profile
   profile: StudentProfile;
@@ -43,12 +46,20 @@ interface AppContextType {
   documents: DocumentRecord[];
   updateDocument: (id: string, updates: Partial<DocumentRecord>) => Promise<void>;
   deleteDocument: (id: string) => Promise<void>;
+  uploadDocument: (
+    file: File,
+    type: DocumentType,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+  ) => Promise<DocumentRecord>;
+  confirmDocumentExtraction: (documentId: string, extractedData: Record<string, ExtractedFieldData>) => Promise<void>;
   triggerAiExtraction: (id: string) => Promise<void>;
   isExtractingDocId: string | null;
 
   // Applications
   applications: ApplicationRecord[];
   updateApplication: (id: string, updates: Partial<ApplicationRecord>) => Promise<void>;
+  saveApplication: (application: Partial<ApplicationRecord> & { examId: string }) => Promise<ApplicationRecord>;
 
   // Exams
   exams: ExamItem[];
@@ -71,8 +82,6 @@ interface AppContextType {
   // Notifications & Modals
   notifications: NotificationItem[];
   markNotificationsRead: () => void;
-  logoModalOpen: boolean;
-  setLogoModalOpen: (open: boolean) => void;
   ocrModalOpen: boolean;
   setOcrModalOpen: (open: boolean) => void;
   ocrTargetDocId: string | null;
@@ -94,7 +103,7 @@ interface AppContextType {
     sections: {
       personal: { completed: boolean; score: number; filledCount: number; totalCount: number };
       academic: { completed: boolean; score: number; filledCount: number; totalCount: number };
-      documents: { completed: boolean; score: number; uploadedCount: number; requiredCount: number };
+      documents: { completed: boolean; score: number; uploadedCount: number; pendingReviewCount: number; requiredCount: number };
       contact: { completed: boolean; score: number; filledCount: number; totalCount: number };
     };
   };
@@ -104,51 +113,26 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [availableUsers, setAvailableUsers] = useState<UserAccount[]>([]);
-  const [profile, setProfile] = useState<StudentProfile>(initialProfile);
-  const [documents, setDocuments] = useState<DocumentRecord[]>(initialDocuments);
-  const [applications, setApplications] = useState<ApplicationRecord[]>(initialApplications);
-  const [exams, setExams] = useState<ExamItem[]>(examDatabase);
+  const [profile, setProfile] = useState<StudentProfile>(createEmptyProfile());
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [exams, setExams] = useState<ExamItem[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dashboardError, setDashboardError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
 
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [workflowExamId, setWorkflowExamId] = useState<string | null>(null);
-  const [selectedExamForEligibility, setSelectedExamForEligibility] = useState<string | null>('exam_jee_main');
+  const [selectedExamForEligibility, setSelectedExamForEligibility] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isExtractingDocId, setIsExtractingDocId] = useState<string | null>(null);
-  const [logoModalOpen, setLogoModalOpen] = useState<boolean>(false);
   const [ocrModalOpen, setOcrModalOpen] = useState<boolean>(false);
   const [ocrTargetDocId, setOcrTargetDocId] = useState<string | null>(null);
   const [userModalOpen, setUserModalOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: 'notif_1',
-      title: 'JEE Main 2027 Registration Active',
-      desc: 'National Testing Agency opened online forms. Deadline: Dec 5.',
-      time: '20 min ago',
-      read: false,
-      type: 'info',
-    },
-    {
-      id: 'notif_2',
-      title: 'Class 12 Marksheet AI Verified',
-      desc: 'High confidence match (98.8%) verified against CBSE 2024 records.',
-      time: '2 hours ago',
-      read: false,
-      type: 'success',
-    },
-    {
-      id: 'notif_3',
-      title: 'BITSAT Session 1 Closes Soon',
-      desc: 'Only 39 days left for BITS Pilani admissions window.',
-      time: 'Yesterday',
-      read: true,
-      type: 'warning',
-    },
-  ]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const addToast = (message: string, type: 'success' | 'info' | 'warning' = 'success') => {
     const id = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 6);
@@ -163,41 +147,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Fetch full data for currently authenticated user from backend
-  const loadUserData = useCallback(async (targetUserId?: string) => {
+  const loadUserData = useCallback(async () => {
     setIsLoading(true);
+    let authRes;
     try {
-      if (targetUserId) {
-        setActiveUserId(targetUserId);
-      }
-
-      // 1. Fetch current user & profile
-      const authRes = await apiService.getCurrentUser();
-      setCurrentUser(authRes.user);
-      if (authRes.profile) {
-        setProfile(authRes.profile);
-      }
-
-      // 2. Fetch user's documents
-      const docs = await apiService.getDocuments();
-      setDocuments(docs);
-
-      // 3. Fetch user's applications
-      const apps = await apiService.getApplications();
-      setApplications(apps);
-
-      // 4. Fetch competitive exams list
-      const examList = await apiService.getExams();
-      setExams(examList);
-
-      // 5. Fetch available accounts for switcher
-      const allUsers = await apiService.getAllUsers();
-      setAvailableUsers(allUsers);
-
-      // 6. Fetch dynamic dashboard statistics
-      const stats = await apiService.getDashboardStats();
-      setDashboardStats(stats);
+      authRes = await apiService.getCurrentUser();
     } catch (err) {
-      console.warn('[AppContext] Falling back to local data during initial backend connection:', err);
+      const message = err instanceof Error ? err.message : 'Unable to restore your session.';
+      setCurrentUser(null);
+      setAuthNotice(message);
+      console.error('[AppContext] Could not restore the authenticated session:', err);
+      setIsLoading(false);
+      return;
+    }
+
+    if (!authRes.user || !authRes.profile) {
+      setCurrentUser(null);
+      setAuthNotice('');
+      setProfile(createEmptyProfile());
+      setDocuments([]);
+      setApplications([]);
+      setExams([]);
+      setDashboardStats(null);
+      setDashboardError('');
+      setIsLoading(false);
+      return;
+    }
+    setCurrentUser(authRes.user);
+    setAuthNotice('');
+    setProfile(authRes.profile);
+
+    try {
+      const [docs, apps, examList, stats] = await Promise.all([
+        apiService.getDocuments(),
+        apiService.getApplications(),
+        apiService.getExams(),
+        apiService.getDashboardStats(),
+      ]);
+      setDocuments(docs);
+      setApplications(apps);
+      setExams(examList);
+      setDashboardStats(stats);
+      setDashboardError('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load your account data.';
+      setDashboardError(message);
+      console.error('[AppContext] Could not load account data:', err);
     } finally {
       setIsLoading(false);
     }
@@ -205,7 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Initial load
   useEffect(() => {
-    loadUserData();
+    void loadUserData().catch(() => undefined);
   }, [loadUserData]);
 
   // Refresh dynamic stats
@@ -213,14 +208,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const stats = await apiService.getDashboardStats();
       setDashboardStats(stats);
+      setDashboardError('');
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Dashboard statistics are unavailable.';
+      setDashboardError(message);
       console.error('Failed to refresh stats:', err);
     }
   };
 
   // Profile update
   const updateProfile = async (updates: Partial<StudentProfile>) => {
-    // Optimistic UI update
+    const previousProfile = profile;
     setProfile(prev => {
       const next: StudentProfile = {
         ...prev,
@@ -244,14 +242,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       addToast('Profile saved and synced to database', 'success');
       await refreshDashboardStats();
-    } catch (err: any) {
+    } catch (err) {
+      setProfile(previousProfile);
       console.error('Failed to sync profile to backend:', err);
-      addToast('Saved locally; backend sync failed', 'warning');
+      addToast(err instanceof Error ? err.message : 'Profile update failed. Please try again.', 'warning');
     }
   };
 
   // Document update
   const updateDocument = async (id: string, updates: Partial<DocumentRecord>) => {
+    const previousDocuments = documents;
     setDocuments(prev => prev.map(d => (d.id === id ? { ...d, ...updates } : d)));
     try {
       const docs = await apiService.saveDocument(id, updates);
@@ -259,12 +259,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('Document record updated in vault', 'success');
       await refreshDashboardStats();
     } catch (err) {
+      setDocuments(previousDocuments);
       console.error('Failed to save document:', err);
+      addToast(err instanceof Error ? err.message : 'Document update failed.', 'warning');
     }
   };
 
   // Delete Document
   const deleteDocument = async (id: string) => {
+    const previousDocuments = documents;
     setDocuments(prev => prev.filter(d => d.id !== id));
     try {
       const docs = await apiService.deleteDocument(id);
@@ -272,59 +275,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('Document removed from vault', 'info');
       await refreshDashboardStats();
     } catch (err) {
+      setDocuments(previousDocuments);
       console.error('Failed to delete document:', err);
+      addToast(err instanceof Error ? err.message : 'Document deletion failed.', 'warning');
     }
+  };
+
+  const uploadDocument = async (
+    file: File,
+    type: DocumentType,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+  ): Promise<DocumentRecord> => {
+    try {
+      const savedDocuments = await apiService.uploadDocument(file, type, onProgress, signal);
+      setDocuments(savedDocuments);
+      addToast(`Uploaded ${file.name}`, 'success');
+      await refreshDashboardStats();
+      const saved = savedDocuments.find((document) => document.type === type);
+      if (!saved) throw new Error('Upload completed but its document record could not be loaded.');
+      return saved;
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Document upload failed.', 'warning');
+      throw err;
+    }
+  };
+
+  const confirmDocumentExtraction = async (
+    documentId: string,
+    extractedData: Record<string, ExtractedFieldData>,
+  ) => {
+    const saved = await apiService.confirmDocumentExtraction(documentId, extractedData);
+    setProfile(saved.profile);
+    setDocuments(saved.documents);
+    await refreshDashboardStats();
   };
 
   // Application update
   const updateApplication = async (id: string, updates: Partial<ApplicationRecord>) => {
+    const previousApplications = applications;
     setApplications(prev => prev.map(a => (a.id === id ? { ...a, ...updates } : a)));
     try {
       const target = applications.find(a => a.id === id);
-      if (target) {
-        await apiService.saveApplication({ ...target, ...updates, examId: target.examId });
-        const updatedApps = await apiService.getApplications();
-        setApplications(updatedApps);
-      }
+      if (!target) throw new Error('Application not found. Refresh your applications and try again.');
+      await apiService.saveApplication({ ...target, ...updates, examId: target.examId });
+      setApplications(await apiService.getApplications());
       addToast('Application progress saved', 'success');
       await refreshDashboardStats();
     } catch (err) {
+      setApplications(previousApplications);
       console.error('Failed to save application:', err);
+      addToast(err instanceof Error ? err.message : 'Application update failed.', 'warning');
     }
   };
 
-  // Switch User Account
-  const switchUser = async (userId: string) => {
-    try {
-      const res = await apiService.switchUser(userId);
-      setCurrentUser(res.user);
-      if (res.profile) setProfile(res.profile);
-      addToast(`Switched account to ${res.user.fullName}`, 'success');
-      await loadUserData(userId);
-    } catch (err) {
-      console.error('Failed to switch user:', err);
-      addToast('Could not switch account', 'warning');
-    }
+  const saveApplication = async (application: Partial<ApplicationRecord> & { examId: string }) => {
+    const saved = await apiService.saveApplication(application);
+    setApplications(await apiService.getApplications());
+    await refreshDashboardStats();
+    return saved;
   };
 
-  // Login / Register with Email
-  const login = async (email: string) => {
-    try {
-      const res = await apiService.login(email);
-      setCurrentUser(res.user);
-      if (res.profile) setProfile(res.profile);
-      addToast(`Logged in as ${res.user.email}`, 'success');
-      await loadUserData(res.user.id);
-    } catch (err) {
-      console.error('Login failed:', err);
-      addToast('Login failed', 'warning');
-    }
+  const login = async (email: string, password: string) => {
+    setAuthNotice('');
+    const res = await apiService.login(email, password);
+    setCurrentUser(res.user);
+    setProfile(res.profile);
+    await loadUserData();
+    addToast(`Logged in as ${res.user.email}`, 'success');
   };
 
   // Logout
-  const logout = () => {
-    // Switch to fresh applicant
-    switchUser('usr_fresh_applicant');
+  const logout = async () => {
+    try {
+      await apiService.logout();
+      setCurrentUser(null);
+      setAuthNotice('');
+      setProfile(createEmptyProfile());
+      setDocuments([]);
+      setApplications([]);
+      setExams([]);
+      setDashboardStats(null);
+      setDashboardError('');
+      addToast('Logged out securely', 'success');
+    } catch (err) {
+      console.error('Logout failed:', err);
+      addToast('Logout request failed', 'warning');
+    }
   };
 
   const openOcrStudio = (docId?: string) => {
@@ -338,7 +375,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const openWorkflow = (examId?: string) => {
-    setWorkflowExamId(examId || 'exam_jee_main');
+    setWorkflowExamId(examId || null);
   };
 
   const closeWorkflow = () => {
@@ -356,20 +393,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         currentUser,
-        availableUsers,
-        switchUser,
         login,
         logout,
         isLoading,
+        dashboardError,
+        refreshUserData: loadUserData,
+        authNotice,
+        clearAuthNotice: () => setAuthNotice(''),
         profile,
         updateProfile,
         documents,
         updateDocument,
         deleteDocument,
+        uploadDocument,
+        confirmDocumentExtraction,
         triggerAiExtraction,
         isExtractingDocId,
         applications,
         updateApplication,
+        saveApplication,
         exams,
         dashboardStats,
         refreshDashboardStats,
@@ -384,8 +426,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSearchQuery,
         notifications,
         markNotificationsRead,
-        logoModalOpen,
-        setLogoModalOpen,
         ocrModalOpen,
         setOcrModalOpen,
         ocrTargetDocId,

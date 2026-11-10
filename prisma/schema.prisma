@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                     String        @id
+  email                  String        @unique
+  fullName               String        @map("full_name")
+  avatarUrl              String?       @map("avatar_url")
+  isVerified             Boolean       @default(false) @map("is_verified")
+  role                   String?
+  institution            String?
+  passwordHash           String        @map("password_hash")
+  otpHash                String?       @map("otp_hash")
+  otpExpiresAt           DateTime?     @map("otp_expires_at")
+  otpAttemptsRemaining   Int?          @map("otp_attempts_remaining")
+  lastOtpSentAt          DateTime?     @map("last_otp_sent_at")
+  passwordResetTokenHash String?       @map("password_reset_token_hash")
+  passwordResetExpiresAt DateTime?     @map("password_reset_expires_at")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+  profile                UserProfile?
+  documents              Document[]
+  applications           Application[]
+  sessions               Session[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  userId                  String   @id @map("user_id")
+  personalFullName        String   @map("personal_full_name")
+  personalDob             String   @default("") @map("personal_dob")
+  personalGender          String   @default("") @map("personal_gender")
+  personalNationality     String   @default("") @map("personal_nationality")
+  personalCategory        String   @default("") @map("personal_category")
+  personalPhoneNumber     String   @default("") @map("personal_phone_number")
+  personalAltPhoneNumber  String?  @map("personal_alt_phone_number")
+  addressStreet           String   @default("") @map("address_street")
+  addressCity             String   @default("") @map("address_city")
+  addressState            String   @default("") @map("address_state")
+  addressPincode          String   @default("") @map("address_pincode")
+  addressCountry          String   @default("") @map("address_country")
+  fathersName             String?  @map("fathers_name")
+  mothersName             String?  @map("mothers_name")
+  class10Board            String   @default("") @map("class10_board")
+  class10SchoolName       String   @default("") @map("class10_school_name")
+  class10PassingYear      Int      @default(0) @map("class10_passing_year")
+  class10Percentage       Float    @default(0) @map("class10_percentage")
+  class10RollNumber       String   @default("") @map("class10_roll_number")
+  class10MaxMarks         Float?   @map("class10_max_marks")
+  class10ObtainedMarks    Float?   @map("class10_obtained_marks")
+  class12Status           String   @default("") @map("class12_status")
+  class12Board            String   @default("") @map("class12_board")
+  class12SchoolName       String   @default("") @map("class12_school_name")
+  class12PassingYear      Int      @default(0) @map("class12_passing_year")
+  class12Percentage       Float    @default(0) @map("class12_percentage")
+  class12RollNumber       String   @default("") @map("class12_roll_number")
+  class12Stream           String   @default("") @map("class12_stream")
+  class12Subjects         String[] @default([]) @map("class12_subjects")
+  currentQualification    String   @default("") @map("current_qualification")
+  academicInstitution     String   @default("") @map("academic_institution")
+  cgpaOrPercentage        Float?   @map("cgpa_or_percentage")
+  yearOfGraduation        Int?     @map("year_of_graduation")
+  preferredExamCategories String[] @default([]) @map("preferred_exam_categories")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Document {
+  id                 String    @id
+  userId             String    @map("user_id")
+  type               String
+  title              String
+  description        String    @default("")
+  requiredFor        String[]  @default([]) @map("required_for")
+  status             String
+  fileUrl            String?   @map("file_url")
+  fileName           String?   @map("file_name")
+  mimeType           String?   @map("mime_type")
+  fileSize           String?   @map("file_size")
+  uploadedAt         DateTime? @map("uploaded_at")
+  extractedData      Json?     @map("extracted_data")
+  detailedExtraction Json?     @map("detailed_extraction")
+  confidenceScore    Int?      @map("confidence_score")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId, uploadedAt])
+  @@map("documents")
+}
+
+model Exam {
+  id                     String        @id
+  slug                   String        @unique
+  name                   String
+  shortName              String?       @map("short_name")
+  fullName               String        @map("full_name")
+  authority              String
+  category               String
+  level                  String        @default("national")
+  state                  String?
+  conductingBody         String        @default("") @map("conducting_body")
+  description            String
+  eligibilitySummary     String        @map("eligibility_summary")
+  criteria               Json
+  applicationOpenDate    String        @default("") @map("application_open_date")
+  applicationDeadline    String        @default("") @map("application_deadline")
+  admitCardDate          String        @default("") @map("admit_card_date")
+  examDate               String        @default("") @map("exam_date")
+  feeINR                 Json          @map("fee_inr")
+  officialWebsite        String?       @map("official_website")
+  registrationUrl        String?       @map("registration_url")
+  notificationUrl        String?       @map("notification_url")
+  syllabusUrl            String?       @map("syllabus_url")
+  registrationStartDate  DateTime?     @map("registration_start_date") @db.Date
+  registrationEndDate    DateTime?     @map("registration_end_date") @db.Date
+  directoryExamDate      DateTime?     @map("directory_exam_date") @db.Date
+  directoryAdmitCardDate DateTime?     @map("directory_admit_card_date") @db.Date
+  resultDate             DateTime?     @map("result_date") @db.Date
+  applicationFee         Json?         @map("application_fee")
+  eligibility            String?
+  ageLimit               String?       @map("age_limit")
+  mode                   String?
+  frequency              String?
+  popularCourses         String[]      @default([]) @map("popular_courses")
+  documentsRequired      String[]      @default([]) @map("documents_required")
+  status                 String        @default("tbd")
+  sourceUrl              String?       @map("source_url")
+  verifiedAt             DateTime?     @map("verified_at")
+  lastVerifiedAt         DateTime?     @map("last_verified_at") @db.Date
+  applicationFields      Json?         @map("application_fields")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+  applications           Application[]
+
+  @@index([verifiedAt, applicationDeadline])
+  @@index([category, level, state])
+  @@index([registrationEndDate])
+  @@map("exams")
+}
+
+model Application {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  examId            String    @map("exam_id")
+  status            String
+  progressPercent   Int       @default(0) @map("progress_percent")
+  lastUpdated       DateTime  @updatedAt @map("last_updated")
+  applicationNumber String?   @map("application_number")
+  missingFields     String[]  @default([]) @map("missing_fields")
+  mappedFieldsCount Int       @default(0) @map("mapped_fields_count")
+  totalFieldsCount  Int       @default(0) @map("total_fields_count")
+  submittedAt       DateTime? @map("submitted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam              Exam      @relation(fields: [examId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, examId])
+  @@index([userId, status])
+  @@index([examId])
+  @@map("applications")
+}
+
+model Session {
+  tokenHash String   @id @map("token_hash")
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}

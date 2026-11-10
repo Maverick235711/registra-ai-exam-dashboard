@@ -8,6 +8,27 @@ export interface FieldMappingConfig {
   placeholder: string;
 }
 
+export const validateOcrFieldValue = (key: string, value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 500) return false;
+  if (['date_of_birth', 'issue_date', 'expiry_date'].includes(key)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return false;
+    const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== trimmed) return false;
+    if (key === 'date_of_birth' && parsed.getTime() > Date.now()) return false;
+  }
+  if (['percentage', 'marks_obtained', 'maximum_marks', 'cgpa'].includes(key)) {
+    const number = Number(trimmed.replace('%', ''));
+    const maximum = key === 'percentage' ? 100 : key === 'cgpa' ? 10 : 100_000;
+    if (!Number.isFinite(number) || number < 0 || number > maximum) return false;
+  }
+  if (key === 'passing_year') {
+    const year = Number(trimmed);
+    if (!Number.isInteger(year) || year < 1900 || year > new Date().getUTCFullYear() + 5) return false;
+  }
+  return true;
+};
+
 export const FIELD_DEFINITIONS: Record<string, FieldMappingConfig> = {
   // Personal Details
   student_name: {
@@ -15,7 +36,7 @@ export const FIELD_DEFINITIONS: Record<string, FieldMappingConfig> = {
     label: "Candidate / Student Name",
     group: 'Personal Details',
     type: 'text',
-    placeholder: 'e.g. Aryan Sharma',
+    placeholder: 'Candidate name',
   },
   date_of_birth: {
     key: 'date_of_birth',
@@ -36,14 +57,14 @@ export const FIELD_DEFINITIONS: Record<string, FieldMappingConfig> = {
     label: "Father's Name",
     group: 'Personal Details',
     type: 'text',
-    placeholder: "e.g. Dr. Ramesh Sharma",
+    placeholder: "Father's name",
   },
   mothers_name: {
     key: 'mothers_name',
     label: "Mother's Name",
     group: 'Personal Details',
     type: 'text',
-    placeholder: 'e.g. Sunita Sharma',
+    placeholder: "Mother's name",
   },
 
   // Academic Details
@@ -202,8 +223,8 @@ export async function checkBackendOcrHealth(): Promise<{
       ok: true,
       geminiConfigured: Boolean(data.geminiConfigured),
       message: data.geminiConfigured
-        ? 'Gemini 3.8 Flash OCR Engine connected & ready.'
-        : 'Gemini API Key is not set in environment secrets.',
+        ? 'Document scanning is ready.'
+        : 'Document scanning is not configured. Contact support.',
     };
   } catch (err: any) {
     return {
@@ -259,7 +280,8 @@ export function mapOcrDataToProfile(
   };
 
   const getVal = (key: string): string | null => {
-    return extractedData[key]?.value || null;
+    const value = extractedData[key]?.value?.trim() || null;
+    return value && validateOcrFieldValue(key, value) ? value : null;
   };
 
   // 1. Personal Details
@@ -308,8 +330,7 @@ export function mapOcrDataToProfile(
       const max = parseFloat(getVal('maximum_marks')!);
       if (!isNaN(max)) updates.academicInfo!.class10.maxMarks = max;
     }
-  } else if (isClass12 || !isClass10) {
-    // Default to class 12 if not explicitly class 10
+  } else if (isClass12) {
     if (getVal('board_or_university')) updates.academicInfo!.class12.board = getVal('board_or_university')!;
     if (getVal('school_or_college')) updates.academicInfo!.class12.schoolName = getVal('school_or_college')!;
     if (getVal('roll_number')) updates.academicInfo!.class12.rollNumber = getVal('roll_number')!;

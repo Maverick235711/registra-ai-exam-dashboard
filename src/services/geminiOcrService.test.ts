@@ -2,10 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { 
   mapOcrDataToProfile, 
-  FIELD_DEFINITIONS 
+  FIELD_DEFINITIONS,
+  validateOcrFieldValue,
 } from './geminiOcrService.ts';
-import { initialProfile } from '../data/mockData.ts';
-import { ExtractedFieldData } from '../types/index.ts';
+import { ExtractedFieldData, StudentProfile } from '../types/index.ts';
+
+const initialProfile: StudentProfile = {
+  id: 'test-profile',
+  personalInfo: {
+    fullName: '',
+    dob: '',
+    gender: '',
+    nationality: '',
+    category: '',
+    email: '',
+    phoneNumber: '',
+    address: { street: '', city: '', state: '', pincode: '', country: '' },
+  },
+  academicInfo: {
+    class10: { board: '', schoolName: '', passingYear: 0, percentage: 0, rollNumber: '' },
+    class12: { status: '', board: '', schoolName: '', passingYear: 0, percentage: 0, rollNumber: '', stream: '', subjects: [] },
+    currentQualification: '',
+    institution: '',
+  },
+};
 
 test('FIELD_DEFINITIONS covers all required candidate and academic fields', () => {
   assert.ok(FIELD_DEFINITIONS.student_name, 'student_name definition exists');
@@ -14,6 +34,16 @@ test('FIELD_DEFINITIONS covers all required candidate and academic fields', () =
   assert.ok(FIELD_DEFINITIONS.percentage, 'percentage definition exists');
   assert.ok(FIELD_DEFINITIONS.board_or_university, 'board_or_university definition exists');
   assert.ok(FIELD_DEFINITIONS.date_of_birth, 'date_of_birth definition exists');
+});
+
+test('validateOcrFieldValue rejects invalid dates and out-of-range academic values', () => {
+  assert.equal(validateOcrFieldValue('date_of_birth', '2024-02-31'), false);
+  assert.equal(validateOcrFieldValue('date_of_birth', '2999-01-01'), false);
+  assert.equal(validateOcrFieldValue('percentage', '101'), false);
+  assert.equal(validateOcrFieldValue('cgpa', '11'), false);
+  assert.equal(validateOcrFieldValue('passing_year', 'not-a-year'), false);
+  assert.equal(validateOcrFieldValue('date_of_birth', '2005-08-20'), true);
+  assert.equal(validateOcrFieldValue('percentage', '92.5'), true);
 });
 
 test('mapOcrDataToProfile correctly maps personal details from OCR result', () => {
@@ -78,4 +108,19 @@ test('mapOcrDataToProfile correctly targets Class 10 when document is Class 10 m
   assert.equal(updated.academicInfo?.class10.percentage, 95.2);
   assert.equal(updated.academicInfo?.class10.obtainedMarks, 476);
   assert.equal(updated.academicInfo?.class10.maxMarks, 500);
+});
+
+test('mapOcrDataToProfile ignores invalid dates, marks, and unrelated identity-document academic fields', () => {
+  const ocrData: Record<string, ExtractedFieldData> = {
+    date_of_birth: { value: '2024-02-31', confidence: 98, status: 'high' },
+    percentage: { value: '140', confidence: 95, status: 'high' },
+    passing_year: { value: 'not-a-year', confidence: 92, status: 'high' },
+    board_or_university: { value: 'Unverified Board', confidence: 90, status: 'high' },
+  };
+
+  const updated = mapOcrDataToProfile(ocrData, 'Passport', initialProfile);
+
+  assert.equal(updated.personalInfo?.dob, initialProfile.personalInfo.dob);
+  assert.equal(updated.academicInfo?.class12.board, initialProfile.academicInfo.class12.board);
+  assert.equal(updated.academicInfo?.class12.percentage, initialProfile.academicInfo.class12.percentage);
 });

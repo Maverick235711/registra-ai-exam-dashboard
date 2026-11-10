@@ -42,11 +42,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Dynamic counts strictly computed from user's actual database state
-  const uploadedDocsCount = documents.filter(d => Boolean(d.fileUrl) || d.status === 'Verified' || d.status === 'Uploaded').length;
+  const uploadedDocsCount = documents.filter((document) => Boolean(document.fileUrl)).length;
   const examsCount = exams.length;
   const applicationsCount = applications.length;
-  const profileBadge = profileCompletion.overall === 100 
-    ? 'Verified' 
+  const profileBadge = profileCompletion.overall === 100
+    ? 'Complete'
     : `${profileCompletion.overall}%`;
 
   const navItems = [

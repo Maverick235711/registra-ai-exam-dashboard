@@ -1,928 +1,685 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { StudentProfile, DocumentRecord, ApplicationRecord, ExamItem, UserAccount } from '../types';
+import { Prisma, PrismaClient, type Document as PrismaDocument, type Exam as PrismaExam, type User as PrismaUser } from '@prisma/client';
+import { getPrismaClient } from './prisma.ts';
+import {
+  ApplicationRecord,
+  ApplicationStatus,
+  DocumentRecord,
+  DocumentType,
+  ExamDirectoryEntry,
+  ExamCategory,
+  ExamItem,
+  ExtractedFieldData,
+  StudentProfile,
+  UserAccount,
+} from '../types/index.ts';
+import { getRegistrationStatus } from '../utils/eligibilityEngine.ts';
+import { getExamRegistrationStatus, type ExamDirectoryFilters, type ExamDirectoryQueryResult } from './examDirectory.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_FILE = path.resolve(__dirname, '../../data/registra_db.json');
-
-export interface DatabaseSchema {
-  users: UserAccount[];
-  profiles: Record<string, StudentProfile>;
-  documents: Record<string, DocumentRecord[]>;
-  applications: Record<string, ApplicationRecord[]>;
-  exams: ExamItem[];
-}
-
-const defaultExams: ExamItem[] = [
-  {
-    id: 'exam_jee_main',
-    name: 'JEE Main 2027',
-    fullName: 'Joint Entrance Examination (Main) Session 1',
-    authority: 'National Testing Agency (NTA)',
-    category: 'Engineering',
-    description: 'National level entrance examination for admission into undergraduate engineering programs (B.Tech/B.Arch) at NITs, IIITs, and participating institutions, and screening for JEE Advanced.',
-    eligibilitySummary: '10+2 passed with Physics & Mathematics as compulsory subjects along with Chemistry or CS. Minimum 75% marks in Class 12 for NIT/IIIT/CFTI admission (65% for SC/ST).',
-    criteria: {
-      minAgeYears: 16,
-      maxAgeYears: 25,
-      requiredStream: ['PCM', 'PCMB'],
-      requiredSubjects: ['Physics', 'Mathematics'],
-      minClass12Percentage: 75,
-    },
-    applicationOpenDate: '2026-11-01',
-    applicationDeadline: '2026-12-05',
-    admitCardDate: '2027-01-14',
-    examDate: '2027-01-24',
-    feeINR: {
-      general: 1000,
-      reserved: 500,
-      female: 800,
-    },
-    officialWebsite: 'https://jeemain.nta.nic.in',
-    popularCourses: ['Computer Science & Engineering', 'Electronics & Comm.', 'Electrical Engineering', 'Mechanical'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'class12_marksheet', 'identity_proof'],
-    status: 'Registration Open',
-  },
-  {
-    id: 'exam_cuet_ug',
-    name: 'CUET UG 2027',
-    fullName: 'Common University Entrance Test (Undergraduate)',
-    authority: 'National Testing Agency (NTA)',
-    category: 'Undergraduate',
-    description: 'Single window opportunity for seeking admission into all Central Universities, State Universities, and participating private institutions across India.',
-    eligibilitySummary: 'Passed Class 12 or equivalent. No upper age bar. Candidates must choose domain subjects matching their desired university course requirements.',
-    criteria: {
-      minAgeYears: 16,
-      minClass12Percentage: 50,
-      allowedQualifications: ['Senior Secondary', '10+2', 'Diploma'],
-    },
-    applicationOpenDate: '2026-10-15',
-    applicationDeadline: '2026-11-30',
-    admitCardDate: '2027-04-20',
-    examDate: '2027-05-15',
-    feeINR: {
-      general: 750,
-      reserved: 400,
-      female: 700,
-    },
-    officialWebsite: 'https://cuetug.nta.nic.in',
-    popularCourses: ['B.Sc (Hons) Computer Science', 'B.A (Hons) Economics', 'B.Com (Hons)', 'Integrated B.Tech'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'class12_marksheet', 'identity_proof'],
-    status: 'Registration Open',
-  },
-  {
-    id: 'exam_bitsat',
-    name: 'BITSAT 2027',
-    fullName: 'Birla Institute of Technology and Science Admission Test',
-    authority: 'BITS Pilani',
-    category: 'Engineering',
-    description: 'Computer-based entrance test for integrated degree programs at BITS Pilani, Goa, and Hyderabad campuses.',
-    eligibilitySummary: '10+2 passed with Physics, Chemistry, and Mathematics with minimum aggregate 75% marks in PCM and at least 60% in each subject.',
-    criteria: {
-      minAgeYears: 16,
-      requiredStream: ['PCM', 'PCMB'],
-      requiredSubjects: ['Physics', 'Chemistry', 'Mathematics'],
-      minClass12Percentage: 75,
-    },
-    applicationOpenDate: '2026-11-05',
-    applicationDeadline: '2026-12-18',
-    admitCardDate: '2027-05-02',
-    examDate: '2027-05-20',
-    feeINR: {
-      general: 3400,
-      reserved: 3400,
-      female: 2900,
-    },
-    officialWebsite: 'https://www.bitsadmission.com',
-    popularCourses: ['B.E. Computer Science', 'B.E. Electrical & Electronics', 'M.Sc. Economics'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'class12_marksheet'],
-    status: 'Registration Open',
-  },
-  {
-    id: 'exam_gate',
-    name: 'GATE 2027',
-    fullName: 'Graduate Aptitude Test in Engineering',
-    authority: 'Indian Institute of Technology (IIT Roorkee)',
-    category: 'Engineering',
-    description: 'National examination testing comprehensive understanding of undergraduate subjects in engineering and technology for M.Tech admissions and PSU recruitments.',
-    eligibilitySummary: 'Candidates who have completed any undergraduate degree program in Engineering / Technology / Science or in 3rd or higher year of undergraduate program.',
-    criteria: {
-      minAgeYears: 20,
-      allowedQualifications: ['B.Tech', 'B.E.', 'MCA', 'M.Sc.', 'B.Sc. (Final Year)'],
-    },
-    applicationOpenDate: '2026-08-25',
-    applicationDeadline: '2026-11-22',
-    admitCardDate: '2027-01-08',
-    examDate: '2027-02-06',
-    feeINR: {
-      general: 1800,
-      reserved: 900,
-      female: 900,
-    },
-    officialWebsite: 'https://gate2027.iitr.ac.in',
-    popularCourses: ['Computer Science & IT (CS)', 'Data Science & AI (DA)', 'Electrical Engineering (EE)'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'identity_proof', 'educational_certificate'],
-    status: 'Registration Open',
-  },
-  {
-    id: 'exam_neet_ug',
-    name: 'NEET UG 2027',
-    fullName: 'National Eligibility cum Entrance Test (UG)',
-    authority: 'National Testing Agency (NTA)',
-    category: 'Medical',
-    description: 'Single national entrance test for admission into undergraduate medical courses (MBBS/BDS/BAMS/BSMS/BUMS/BHMS) across all medical institutions in India.',
-    eligibilitySummary: 'Candidates must have passed 10+2 with Physics, Chemistry, Biology/Biotechnology and English as core subjects. Minimum 50% marks in PCB aggregate (40% for SC/ST/OBC).',
-    criteria: {
-      minAgeYears: 17,
-      requiredStream: ['PCB', 'PCMB'],
-      requiredSubjects: ['Physics', 'Chemistry', 'Biology'],
-      minClass12Percentage: 50,
-    },
-    applicationOpenDate: '2027-01-10',
-    applicationDeadline: '2027-03-10',
-    admitCardDate: '2027-04-28',
-    examDate: '2027-05-04',
-    feeINR: {
-      general: 1700,
-      reserved: 1000,
-      female: 1700,
-    },
-    officialWebsite: 'https://neet.nta.nic.in',
-    popularCourses: ['MBBS', 'BDS', 'BAMS', 'B.V.Sc & AH'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'class12_marksheet', 'identity_proof', 'domicile_certificate'],
-    status: 'Upcoming',
-  },
-  {
-    id: 'exam_cat',
-    name: 'CAT 2026',
-    fullName: 'Common Admission Test',
-    authority: 'Indian Institute of Management (IIM Kozhikode)',
-    category: 'Management',
-    description: 'National computer-based test conducted for admission into postgraduate business administration programs at 21 IIMs and over 1,200 non-IIM B-schools.',
-    eligibilitySummary: 'Bachelor Degree with at least 50% marks or equivalent CGPA (45% for SC/ST/PwD). Candidates appearing for the final year of bachelor degree are also eligible.',
-    criteria: {
-      minAgeYears: 20,
-      allowedQualifications: ['Bachelor Degree', 'Final Year Undergraduate'],
-    },
-    applicationOpenDate: '2026-08-01',
-    applicationDeadline: '2026-09-20',
-    admitCardDate: '2026-11-05',
-    examDate: '2026-11-29',
-    feeINR: {
-      general: 2400,
-      reserved: 1200,
-    },
-    officialWebsite: 'https://iimcat.ac.in',
-    popularCourses: ['MBA (General)', 'Executive MBA', 'PGDM in Business Analytics'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'class12_marksheet', 'educational_certificate', 'identity_proof'],
-    status: 'Closed',
-  },
-  {
-    id: 'exam_upsc_cse',
-    name: 'UPSC CSE 2027',
-    fullName: 'Civil Services Examination (Preliminary)',
-    authority: 'Union Public Service Commission (UPSC)',
-    category: 'Civil Services',
-    description: 'Premier national examination conducted by UPSC for recruitment to higher civil services of the Government of India, including IAS, IPS, and IFS.',
-    eligibilitySummary: 'Candidate must hold a Graduate degree of any recognized university. Age between 21 and 32 years on 1st August of exam year (relaxations for OBC/SC/ST).',
-    criteria: {
-      minAgeYears: 21,
-      maxAgeYears: 32,
-      allowedQualifications: ['Graduate Degree', 'Final Year Graduate'],
-    },
-    applicationOpenDate: '2027-01-20',
-    applicationDeadline: '2027-02-18',
-    admitCardDate: '2027-05-10',
-    examDate: '2027-05-23',
-    feeINR: {
-      general: 100,
-      reserved: 0,
-      female: 0,
-    },
-    officialWebsite: 'https://upsc.gov.in',
-    popularCourses: ['Indian Administrative Service (IAS)', 'Indian Police Service (IPS)', 'Indian Foreign Service (IFS)'],
-    documentsRequired: ['photograph', 'signature', 'identity_proof', 'educational_certificate'],
-    status: 'Upcoming',
-  },
-  {
-    id: 'exam_ssc_cgl',
-    name: 'SSC CGL 2026',
-    fullName: 'Combined Graduate Level Examination',
-    authority: 'Staff Selection Commission (SSC)',
-    category: 'Government & Banking',
-    description: 'National recruitment examination conducted to recruit staff to various Group B and Group C non-technical posts in top ministries and departments of the Government of India.',
-    eligibilitySummary: 'Bachelor degree from a recognized University or Institute. Age between 18 and 30 years for most inspector/officer cadre posts.',
-    criteria: {
-      minAgeYears: 18,
-      maxAgeYears: 30,
-      allowedQualifications: ['Bachelor Degree', 'Graduation in any discipline'],
-    },
-    applicationOpenDate: '2026-10-20',
-    applicationDeadline: '2026-11-28',
-    admitCardDate: '2026-12-05',
-    examDate: '2026-12-15',
-    feeINR: {
-      general: 100,
-      reserved: 0,
-      female: 0,
-    },
-    officialWebsite: 'https://ssc.gov.in',
-    popularCourses: ['Assistant Section Officer', 'Income Tax Inspector', 'Central Excise Inspector', 'Auditor'],
-    documentsRequired: ['photograph', 'signature', 'class10_marksheet', 'identity_proof', 'educational_certificate'],
-    status: 'Registration Open',
-  },
-];
-
-// Seed Data for initial users
-const defaultUsers: UserAccount[] = [
-  {
-    id: 'usr_26ucc005',
-    email: '26ucc005@cce.lnmiit.ac.in',
-    fullName: 'Aditya K. Sharma',
-    avatarUrl: '',
-    isVerified: false,
-    role: 'Undergraduate Candidate',
-    institution: 'The LNM Institute of Information Technology (LNMIIT)',
-    createdAt: '2026-10-12T08:30:00.000Z',
-  },
-  {
-    id: 'usr_fresh_applicant',
-    email: 'new.applicant@registra.edu',
-    fullName: 'Priya Verma',
-    avatarUrl: '',
-    isVerified: false,
-    role: 'Prospective Applicant',
-    institution: 'National Model Senior Secondary School',
-    createdAt: '2026-11-01T10:00:00.000Z',
-  },
-  {
-    id: 'usr_verified_applicant',
-    email: 'ananya.sen@iitd.ac.in',
-    fullName: 'Ananya Sen',
-    avatarUrl: '',
-    isVerified: true,
-    role: 'Verified Candidate (CBSE / NTA Cleared)',
-    institution: 'Indian Institute of Technology Delhi',
-    createdAt: '2026-09-15T14:20:00.000Z',
-  },
-];
-
-const defaultProfiles: Record<string, StudentProfile> = {
-  // User 1: 26ucc005@cce.lnmiit.ac.in - Realistic partially completed profile (not 100%!)
-  usr_26ucc005: {
-    id: 'usr_26ucc005',
-    personalInfo: {
-      fullName: 'Aditya K. Sharma',
-      dob: '2006-08-14',
-      gender: 'Male',
-      nationality: 'Indian',
-      category: 'General',
-      email: '26ucc005@cce.lnmiit.ac.in',
-      phoneNumber: '+91 98290 12345',
-      altPhoneNumber: '+91 94140 54321',
-      address: {
-        street: 'Rupa ki Nangal, Post-Sumel, Via-Jamdoli',
-        city: 'Jaipur',
-        state: 'Rajasthan',
-        pincode: '302031',
-        country: 'India',
-      },
-      fathersName: 'Dr. Rajesh Sharma',
-      mothersName: '', // Missing field! Prevents fake 100%
-    },
-    academicInfo: {
-      class10: {
-        board: 'CBSE',
-        schoolName: 'Jaipur Public School',
-        passingYear: 2022,
-        percentage: 91.2,
-        rollNumber: 'CBSE-10-554219',
-        maxMarks: 500,
-        obtainedMarks: 456,
-      },
-      class12: {
-        status: 'Passed',
-        board: 'CBSE',
-        schoolName: 'Jaipur Public School',
-        passingYear: 2024,
-        percentage: 86.4,
-        rollNumber: 'CBSE-12-663812',
-        stream: 'PCM',
-        subjects: ['Physics', 'Chemistry', 'Mathematics', 'Computer Science', 'English'],
-      },
-      currentQualification: 'Senior Secondary (10+2 Passed)',
-      institution: 'The LNM Institute of Information Technology (LNMIIT)',
-      cgpaOrPercentage: 86.4,
-      yearOfGraduation: 2024,
-    },
-  },
-
-  // User 2: Fresh applicant with missing academic & document details
-  usr_fresh_applicant: {
-    id: 'usr_fresh_applicant',
-    personalInfo: {
-      fullName: 'Priya Verma',
-      dob: '2007-02-19',
-      gender: 'Female',
-      nationality: 'Indian',
-      category: 'General',
-      email: 'new.applicant@registra.edu',
-      phoneNumber: '+91 91234 56789',
-      address: {
-        street: '',
-        city: 'Lucknow',
-        state: 'Uttar Pradesh',
-        pincode: '',
-        country: 'India',
-      },
-      fathersName: '',
-      mothersName: '',
-    },
-    academicInfo: {
-      class10: {
-        board: '',
-        schoolName: '',
-        passingYear: 2023,
-        percentage: 0,
-        rollNumber: '',
-      },
-      class12: {
-        status: 'Appearing',
-        board: 'CBSE',
-        schoolName: '',
-        passingYear: 2025,
-        percentage: 0,
-        rollNumber: '',
-        stream: 'PCM',
-        subjects: [],
-      },
-      currentQualification: 'Senior Secondary (Class 12 Appearing)',
-      institution: '',
-    },
-  },
-
-  // User 3: Ananya Sen - 100% Fully completed & verified
-  usr_verified_applicant: {
-    id: 'usr_verified_applicant',
-    personalInfo: {
-      fullName: 'Ananya Sen',
-      dob: '2005-11-20',
-      gender: 'Female',
-      nationality: 'Indian',
-      category: 'General',
-      email: 'ananya.sen@iitd.ac.in',
-      phoneNumber: '+91 99887 76655',
-      altPhoneNumber: '+91 98765 11223',
-      address: {
-        street: 'IIT Campus, Hauz Khas',
-        city: 'New Delhi',
-        state: 'Delhi',
-        pincode: '110016',
-        country: 'India',
-      },
-      fathersName: 'Prof. Subhash Sen',
-      mothersName: 'Dr. Meenakshi Sen',
-    },
-    academicInfo: {
-      class10: {
-        board: 'ICSE',
-        schoolName: 'Loreto Convent',
-        passingYear: 2021,
-        percentage: 97.2,
-        rollNumber: 'ICSE-2021-98124',
-        maxMarks: 600,
-        obtainedMarks: 583,
-      },
-      class12: {
-        status: 'Passed',
-        board: 'CBSE',
-        schoolName: 'Delhi Public School, R.K. Puram',
-        passingYear: 2023,
-        percentage: 96.8,
-        rollNumber: 'CBSE-12-887102',
-        stream: 'PCM',
-        subjects: ['Physics', 'Chemistry', 'Mathematics', 'Economics', 'English Core'],
-      },
-      currentQualification: 'Undergraduate B.Tech Computer Science (3rd Year)',
-      institution: 'Indian Institute of Technology Delhi',
-      cgpaOrPercentage: 9.42,
-      yearOfGraduation: 2027,
-    },
-  },
+type ApplicationWithExam = Prisma.ApplicationGetPayload<{ include: { exam: true } }>;
+type ProfileWithUser = Prisma.UserProfileGetPayload<{ include: { user: { select: { email: true } } } }>;
+type ExamRow = PrismaExam & {
+  registrationStartDate?: Date | null;
+  registrationEndDate?: Date | null;
+  directoryExamDate?: Date | null;
+  directoryAdmitCardDate?: Date | null;
+  resultDate?: Date | null;
+  shortName?: string | null;
+  level?: string | null;
+  state?: string | null;
+  conductingBody?: string | null;
+  registrationUrl?: string | null;
+  notificationUrl?: string | null;
+  syllabusUrl?: string | null;
+  applicationFee?: Prisma.JsonValue | null;
+  eligibility?: string | null;
+  ageLimit?: string | null;
+  mode?: string | null;
+  frequency?: string | null;
+  lastVerifiedAt?: Date | null;
+  slug?: string | null;
 };
 
-const defaultDocuments: Record<string, DocumentRecord[]> = {
-  // User 1 documents: 4 uploaded, 1 missing signature, 1 optional category
-  usr_26ucc005: [
-    {
-      id: 'doc_c10_u1',
-      type: 'class10_marksheet',
-      title: 'Class 10 Marksheet & Passing Certificate',
-      description: 'Central Board of Secondary Education (CBSE) 2022 Examination',
-      requiredFor: ['JEE Main', 'NEET UG', 'CUET UG', 'BITSAT', 'UPSC', 'GATE'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/document_sample_marksheet_1794130574483.jpg',
-      fileName: 'CBSE_Class10_Marksheet_AdityaSharma.pdf',
-      fileSize: '1.4 MB',
-      uploadedAt: '2026-10-14',
-      confidenceScore: 99.4,
-      extractedData: {
-        'Board Name': 'Central Board of Secondary Education',
-        'Roll Number': 'CBSE-10-554219',
-        'Candidate Name': 'Aditya K. Sharma',
-        'Passing Year': '2022',
-        'Total Marks': '456 / 500',
-        'Aggregate Percentage': '91.2%',
-      },
-    },
-    {
-      id: 'doc_c12_u1',
-      type: 'class12_marksheet',
-      title: 'Class 12 Marksheet & Senior Certificate',
-      description: 'Senior School Certificate Examination (Science Stream - PCM)',
-      requiredFor: ['JEE Main', 'NEET UG', 'CUET UG', 'BITSAT'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/document_sample_marksheet_1794130574483.jpg',
-      fileName: 'CBSE_Class12_SeniorMarksheet_AdityaSharma.pdf',
-      fileSize: '1.8 MB',
-      uploadedAt: '2026-10-14',
-      confidenceScore: 98.8,
-      extractedData: {
-        'Board Name': 'CBSE Delhi',
-        'Roll Number': 'CBSE-12-663812',
-        'Candidate Name': 'Aditya K. Sharma',
-        'Stream': 'Science (Physics, Chemistry, Maths)',
-        'Passing Year': '2024',
-        'Aggregate Percentage': '86.4%',
-      },
-    },
-    {
-      id: 'doc_photo_u1',
-      type: 'photograph',
-      title: 'Passport Size Photograph (Recent)',
-      description: 'White background, 80% face coverage, studio lit without goggles/cap',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Uploaded',
-      fileUrl: '',
-      fileName: 'Aditya_Sharma_Photograph_Passport.jpg',
-      fileSize: '210 KB',
-      uploadedAt: '2026-10-18',
-      confidenceScore: 95.0,
-      extractedData: {
-        'Dimensions': '3.5cm x 4.5cm',
-        'Resolution': '300 DPI',
-        'Background': 'Plain Neutral White',
-      },
-    },
-    {
-      id: 'doc_id_u1',
-      type: 'identity_proof',
-      title: 'Government Identity Proof (Aadhaar / Passport)',
-      description: 'Unique Identification Authority of India (UIDAI) e-Aadhaar',
-      requiredFor: ['All Government & Entrance Exams'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/document_sample_id_1794130574538.jpg',
-      fileName: 'UIDAI_eAadhaar_Aditya_Masked.pdf',
-      fileSize: '820 KB',
-      uploadedAt: '2026-10-20',
-      confidenceScore: 99.2,
-      extractedData: {
-        'ID Type': 'Aadhaar Card (UIDAI)',
-        'Masked ID Number': 'XXXX-XXXX-3419',
-        'Name Match': '100% Match (Aditya K. Sharma)',
-      },
-    },
-    {
-      id: 'doc_sig_u1',
-      type: 'signature',
-      title: 'Specimen Signature (Black Ink on White Paper)',
-      description: 'Uncropped digital specimen on plain unruled white background',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Missing',
-      fileUrl: '',
-      fileName: '',
-      fileSize: '',
-      uploadedAt: '',
-    },
-    {
-      id: 'doc_cat_u1',
-      type: 'category_certificate',
-      title: 'Category Certificate (if applicable)',
-      description: 'Competent Authority issued certificate for reservation benefit',
-      requiredFor: ['OBC-NCL', 'SC', 'ST', 'EWS'],
-      status: 'Pending Review',
-      fileUrl: '',
-      fileName: '',
-      fileSize: '',
-      uploadedAt: '',
-    },
-  ],
-
-  // User 2: Fresh applicant has 0 uploaded documents
-  usr_fresh_applicant: [
-    {
-      id: 'doc_c10_u2',
-      type: 'class10_marksheet',
-      title: 'Class 10 Marksheet & Passing Certificate',
-      description: 'Secondary School Marksheet',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Missing',
-    },
-    {
-      id: 'doc_c12_u2',
-      type: 'class12_marksheet',
-      title: 'Class 12 Marksheet & Senior Certificate',
-      description: 'Senior School Examination Certificate',
-      requiredFor: ['Engineering', 'Medical', 'Undergraduate'],
-      status: 'Missing',
-    },
-    {
-      id: 'doc_photo_u2',
-      type: 'photograph',
-      title: 'Passport Size Photograph (Recent)',
-      description: 'White background, formal portrait',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Missing',
-    },
-    {
-      id: 'doc_sig_u2',
-      type: 'signature',
-      title: 'Specimen Signature',
-      description: 'Signature in black or dark blue ink',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Missing',
-    },
-    {
-      id: 'doc_id_u2',
-      type: 'identity_proof',
-      title: 'Government Identity Proof',
-      description: 'Aadhaar, Passport or Voter ID',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Missing',
-    },
-  ],
-
-  // User 3: Ananya Sen has all 5 mandatory docs verified
-  usr_verified_applicant: [
-    {
-      id: 'doc_c10_u3',
-      type: 'class10_marksheet',
-      title: 'Class 10 Marksheet & Passing Certificate',
-      description: 'ICSE Board 2021 Passing Certificate',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/document_sample_marksheet_1794130574483.jpg',
-      fileName: 'ICSE_Class10_Marksheet_AnanyaSen.pdf',
-      fileSize: '1.2 MB',
-      uploadedAt: '2026-09-18',
-      confidenceScore: 99.8,
-    },
-    {
-      id: 'doc_c12_u3',
-      type: 'class12_marksheet',
-      title: 'Class 12 Marksheet & Senior Certificate',
-      description: 'CBSE Senior Secondary Certificate',
-      requiredFor: ['Engineering', 'Medical', 'Undergraduate'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/document_sample_marksheet_1794130574483.jpg',
-      fileName: 'CBSE_Class12_Marksheet_AnanyaSen.pdf',
-      fileSize: '1.5 MB',
-      uploadedAt: '2026-09-18',
-      confidenceScore: 99.5,
-    },
-    {
-      id: 'doc_photo_u3',
-      type: 'photograph',
-      title: 'Passport Size Photograph',
-      description: 'Recent studio photograph',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/avatar_student_aryan_1794130573701.jpg',
-      fileName: 'AnanyaSen_Studio_Passport_Photo.jpg',
-      fileSize: '180 KB',
-      uploadedAt: '2026-09-20',
-      confidenceScore: 99.9,
-    },
-    {
-      id: 'doc_sig_u3',
-      type: 'signature',
-      title: 'Specimen Signature',
-      description: 'Digital specimen signature',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Verified',
-      fileUrl: '',
-      fileName: 'AnanyaSen_Signature.png',
-      fileSize: '85 KB',
-      uploadedAt: '2026-09-20',
-      confidenceScore: 98.4,
-    },
-    {
-      id: 'doc_id_u3',
-      type: 'identity_proof',
-      title: 'Government Identity Proof (Aadhaar)',
-      description: 'UIDAI Verified Digital ID',
-      requiredFor: ['All Competitive Exams'],
-      status: 'Verified',
-      fileUrl: '/src/assets/images/document_sample_id_1794130574538.jpg',
-      fileName: 'UIDAI_Aadhaar_AnanyaSen.pdf',
-      fileSize: '790 KB',
-      uploadedAt: '2026-09-22',
-      confidenceScore: 99.9,
-    },
-  ],
+const dateFromIso = (value: string | undefined, fallback = new Date()): Date => {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 };
 
-const defaultApplications: Record<string, ApplicationRecord[]> = {
-  // User 1 has 2 applications (1 In Progress, 1 Pending)
-  usr_26ucc005: [
-    {
-      id: 'app_jee_u1',
-      examId: 'exam_jee_main',
-      examName: 'JEE Main 2027 (Session 1)',
-      authority: 'National Testing Agency',
-      status: 'In Progress',
-      progressPercent: 78,
-      lastUpdated: 'Today at 09:40 AM',
-      deadline: '2026-12-05',
-      missingFields: ["Mother's Full Name", 'Specimen Signature'],
-      mappedFieldsCount: 22,
-      totalFieldsCount: 25,
-      officialPortalUrl: 'https://jeemain.nta.nic.in',
-    },
-    {
-      id: 'app_bitsat_u1',
-      examId: 'exam_bitsat',
-      examName: 'BITSAT 2027',
-      authority: 'BITS Pilani',
-      status: 'Pending',
-      progressPercent: 65,
-      lastUpdated: '3 days ago',
-      deadline: '2026-12-18',
-      missingFields: ['Specimen Signature Upload', 'Campus Choice 3'],
-      mappedFieldsCount: 20,
-      totalFieldsCount: 24,
-      officialPortalUrl: 'https://www.bitsadmission.com',
-    },
-  ],
+const dateFromMilliseconds = (value: number | null | undefined): Date | null =>
+  value === null || value === undefined ? null : new Date(value);
 
-  // User 2: Fresh applicant has 0 applications
-  usr_fresh_applicant: [],
+const jsonValue = (value: object): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
-  // User 3: Ananya Sen has 3 applications (1 Completed, 2 In Progress)
-  usr_verified_applicant: [
-    {
-      id: 'app_gate_u3',
-      examId: 'exam_gate',
-      examName: 'GATE 2027 (Computer Science)',
-      authority: 'IIT Roorkee',
-      status: 'Completed',
-      progressPercent: 100,
-      lastUpdated: 'Yesterday at 04:15 PM',
-      deadline: '2026-11-22',
-      applicationNumber: 'GATE27-CS-892104',
-      missingFields: [],
-      mappedFieldsCount: 26,
-      totalFieldsCount: 26,
-      submittedAt: '2026-11-06T15:30:00Z',
-      officialPortalUrl: 'https://gate2027.iitr.ac.in',
+const jsonValueOrNull = (value: object | undefined): Prisma.InputJsonValue | typeof Prisma.JsonNull =>
+  value ? jsonValue(value) : Prisma.JsonNull;
+
+const decodeJson = <T>(value: Prisma.JsonValue): T =>
+  JSON.parse(JSON.stringify(value)) as T;
+
+const userFromRow = (row: PrismaUser): UserAccount => ({
+  id: row.id,
+  email: row.email,
+  fullName: row.fullName,
+  ...(row.avatarUrl === null ? {} : { avatarUrl: row.avatarUrl }),
+  isVerified: row.isVerified,
+  ...(row.role === null ? {} : { role: row.role }),
+  ...(row.institution === null ? {} : { institution: row.institution }),
+  createdAt: row.createdAt.toISOString(),
+  passwordHash: row.passwordHash,
+  otpHash: row.otpHash,
+  otpExpiresAt: row.otpExpiresAt?.getTime() ?? null,
+  otpAttemptsRemaining: row.otpAttemptsRemaining ?? undefined,
+  lastOtpSentAt: row.lastOtpSentAt?.getTime() ?? null,
+  passwordResetToken: row.passwordResetTokenHash,
+  passwordResetExpiresAt: row.passwordResetExpiresAt?.getTime() ?? null,
+});
+
+const profileFromRow = (row: ProfileWithUser): StudentProfile => ({
+  id: row.userId,
+  personalInfo: {
+    fullName: row.personalFullName,
+    dob: row.personalDob,
+    gender: row.personalGender as StudentProfile['personalInfo']['gender'],
+    nationality: row.personalNationality,
+    category: row.personalCategory as StudentProfile['personalInfo']['category'],
+    email: row.user.email,
+    phoneNumber: row.personalPhoneNumber,
+    ...(row.personalAltPhoneNumber === null ? {} : { altPhoneNumber: row.personalAltPhoneNumber }),
+    address: {
+      street: row.addressStreet,
+      city: row.addressCity,
+      state: row.addressState,
+      pincode: row.addressPincode,
+      country: row.addressCountry,
     },
-    {
-      id: 'app_cuet_u3',
-      examId: 'exam_cuet_ug',
-      examName: 'CUET UG 2027',
-      authority: 'National Testing Agency',
-      status: 'In Progress',
-      progressPercent: 92,
-      lastUpdated: '2 days ago',
-      deadline: '2026-11-30',
-      missingFields: ['Subject Choice 4'],
-      mappedFieldsCount: 27,
-      totalFieldsCount: 28,
-      officialPortalUrl: 'https://cuetug.nta.nic.in',
+    ...(row.fathersName === null ? {} : { fathersName: row.fathersName }),
+    ...(row.mothersName === null ? {} : { mothersName: row.mothersName }),
+  },
+  academicInfo: {
+    class10: {
+      board: row.class10Board,
+      schoolName: row.class10SchoolName,
+      passingYear: row.class10PassingYear,
+      percentage: row.class10Percentage,
+      rollNumber: row.class10RollNumber,
+      ...(row.class10MaxMarks === null ? {} : { maxMarks: row.class10MaxMarks }),
+      ...(row.class10ObtainedMarks === null ? {} : { obtainedMarks: row.class10ObtainedMarks }),
     },
-  ],
+    class12: {
+      status: row.class12Status as StudentProfile['academicInfo']['class12']['status'],
+      board: row.class12Board,
+      schoolName: row.class12SchoolName,
+      passingYear: row.class12PassingYear,
+      percentage: row.class12Percentage,
+      rollNumber: row.class12RollNumber,
+      stream: row.class12Stream as StudentProfile['academicInfo']['class12']['stream'],
+      subjects: row.class12Subjects,
+    },
+    currentQualification: row.currentQualification,
+    institution: row.academicInstitution,
+    ...(row.cgpaOrPercentage === null ? {} : { cgpaOrPercentage: row.cgpaOrPercentage }),
+    ...(row.yearOfGraduation === null ? {} : { yearOfGraduation: row.yearOfGraduation }),
+  },
+  preferredExamCategories: row.preferredExamCategories as ExamCategory[],
+});
+
+const documentFromRow = (row: PrismaDocument): DocumentRecord => ({
+  id: row.id,
+  type: row.type as DocumentType,
+  title: row.title,
+  description: row.description,
+  requiredFor: row.requiredFor,
+  status: row.status as DocumentRecord['status'],
+  ...(row.fileUrl === null ? {} : { fileUrl: row.fileUrl }),
+  ...(row.fileName === null ? {} : { fileName: row.fileName }),
+  ...(row.mimeType === null ? {} : { mimeType: row.mimeType }),
+  ...(row.fileSize === null ? {} : { fileSize: row.fileSize }),
+  ...(row.uploadedAt === null ? {} : { uploadedAt: row.uploadedAt.toISOString() }),
+  ...(row.extractedData === null ? {} : { extractedData: decodeJson<Record<string, string | number>>(row.extractedData) }),
+  ...(row.detailedExtraction === null ? {} : { detailedExtraction: decodeJson<Record<string, ExtractedFieldData>>(row.detailedExtraction) }),
+  ...(row.confidenceScore === null ? {} : { confidenceScore: row.confidenceScore }),
+});
+
+const examFromRow = (row: PrismaExam): ExamItem => {
+  const today = new Date().toISOString().slice(0, 10);
+  const directoryStatus = getExamRegistrationStatus(
+    row.registrationStartDate?.toISOString().slice(0, 10) ?? null,
+    row.registrationEndDate?.toISOString().slice(0, 10) ?? null,
+    today,
+  );
+  return {
+    id: row.id,
+    name: row.name,
+    fullName: row.fullName,
+    authority: row.authority,
+    category: row.category as ExamCategory,
+    description: row.description,
+    eligibilitySummary: row.eligibilitySummary,
+    criteria: row.criteria as ExamItem['criteria'],
+    applicationOpenDate: row.applicationOpenDate,
+    applicationDeadline: row.applicationDeadline,
+    admitCardDate: row.admitCardDate,
+    examDate: row.examDate,
+    feeINR: row.feeINR as ExamItem['feeINR'],
+    officialWebsite: row.officialWebsite ?? '',
+    popularCourses: row.popularCourses,
+    documentsRequired: row.documentsRequired as DocumentType[],
+    status: row.registrationStartDate || row.registrationEndDate
+      ? directoryStatus === 'open'
+        ? 'Registration Open'
+        : directoryStatus === 'closed'
+          ? 'Closed'
+          : directoryStatus === 'upcoming'
+            ? 'Upcoming'
+            : 'Unknown'
+      : getRegistrationStatus(row.applicationOpenDate, row.applicationDeadline, today),
+    ...(row.sourceUrl === null ? {} : { sourceUrl: row.sourceUrl }),
+    ...(row.verifiedAt === null ? {} : { verifiedAt: row.verifiedAt.toISOString() }),
+    ...(row.applicationFields === null ? {} : { applicationFields: decodeJson<NonNullable<ExamItem['applicationFields']>>(row.applicationFields) }),
+    ...(row.slug ? { slug: row.slug } : {}),
+  };
 };
 
-class DatabaseManager {
-  private data: DatabaseSchema;
+const examDirectoryFromRow = (row: PrismaExam): ExamDirectoryEntry => ({
+  id: row.id,
+  slug: row.slug,
+  name: row.name,
+  shortName: row.shortName,
+  category: row.category,
+  level: row.level as ExamDirectoryEntry['level'],
+  state: row.state,
+  conductingBody: row.conductingBody || row.authority,
+  officialWebsite: row.officialWebsite,
+  registrationUrl: row.registrationUrl,
+  notificationUrl: row.notificationUrl,
+  syllabusUrl: row.syllabusUrl,
+  registrationStartDate: row.registrationStartDate?.toISOString().slice(0, 10) ?? null,
+  registrationEndDate: row.registrationEndDate?.toISOString().slice(0, 10) ?? null,
+  examDate: row.directoryExamDate?.toISOString().slice(0, 10) ?? null,
+  admitCardDate: row.directoryAdmitCardDate?.toISOString().slice(0, 10) ?? null,
+  resultDate: row.resultDate?.toISOString().slice(0, 10) ?? null,
+  applicationFee: row.applicationFee === null
+    ? null
+    : decodeJson<ExamDirectoryEntry['applicationFee']>(row.applicationFee),
+  eligibility: row.eligibility,
+  ageLimit: row.ageLimit,
+  mode: row.mode as ExamDirectoryEntry['mode'],
+  status: getExamRegistrationStatus(
+    row.registrationStartDate?.toISOString().slice(0, 10) ?? null,
+    row.registrationEndDate?.toISOString().slice(0, 10) ?? null,
+  ),
+  frequency: row.frequency,
+  sourceUrl: row.sourceUrl,
+  lastVerifiedAt: row.lastVerifiedAt?.toISOString().slice(0, 10) ?? null,
+});
 
-  constructor() {
-    this.data = this.loadDatabase();
+const applicationFromRow = (row: ApplicationWithExam): ApplicationRecord => ({
+  id: row.id,
+  examId: row.examId,
+  examName: row.exam.name,
+  authority: row.exam.authority,
+  status: row.status as ApplicationStatus,
+  progressPercent: row.progressPercent,
+  lastUpdated: row.lastUpdated.toISOString(),
+  deadline: row.exam.applicationDeadline,
+  ...(row.applicationNumber === null ? {} : { applicationNumber: row.applicationNumber }),
+  missingFields: row.missingFields,
+  mappedFieldsCount: row.mappedFieldsCount,
+  totalFieldsCount: row.totalFieldsCount,
+  ...(row.submittedAt === null ? {} : { submittedAt: row.submittedAt.toISOString() }),
+  officialPortalUrl: row.exam.registrationUrl ?? row.exam.officialWebsite ?? '',
+});
+
+const userUpdateData = (updates: Partial<UserAccount>): Prisma.UserUpdateInput => {
+  const data: Prisma.UserUpdateInput = {};
+  if (updates.fullName !== undefined) data.fullName = updates.fullName;
+  if (updates.avatarUrl !== undefined) data.avatarUrl = updates.avatarUrl;
+  if (updates.isVerified !== undefined) data.isVerified = updates.isVerified;
+  if (updates.role !== undefined) data.role = updates.role;
+  if (updates.institution !== undefined) data.institution = updates.institution;
+  if (updates.passwordHash !== undefined) data.passwordHash = updates.passwordHash;
+  if (updates.otpHash !== undefined) data.otpHash = updates.otpHash;
+  if (updates.otpExpiresAt !== undefined) data.otpExpiresAt = dateFromMilliseconds(updates.otpExpiresAt);
+  if (updates.otpAttemptsRemaining !== undefined) data.otpAttemptsRemaining = updates.otpAttemptsRemaining;
+  if (updates.lastOtpSentAt !== undefined) data.lastOtpSentAt = dateFromMilliseconds(updates.lastOtpSentAt);
+  if (updates.passwordResetToken !== undefined) data.passwordResetTokenHash = updates.passwordResetToken;
+  if (updates.passwordResetExpiresAt !== undefined) data.passwordResetExpiresAt = dateFromMilliseconds(updates.passwordResetExpiresAt);
+  return data;
+};
+
+const mergeProfile = (existing: StudentProfile, updates: Partial<StudentProfile>): StudentProfile => ({
+  ...existing,
+  ...updates,
+  id: existing.id,
+  preferredExamCategories: updates.preferredExamCategories ?? existing.preferredExamCategories,
+  personalInfo: {
+    ...existing.personalInfo,
+    ...(updates.personalInfo ?? {}),
+    email: existing.personalInfo.email,
+    address: { ...existing.personalInfo.address, ...(updates.personalInfo?.address ?? {}) },
+  },
+  academicInfo: {
+    ...existing.academicInfo,
+    ...(updates.academicInfo ?? {}),
+    class10: { ...existing.academicInfo.class10, ...(updates.academicInfo?.class10 ?? {}) },
+    class12: { ...existing.academicInfo.class12, ...(updates.academicInfo?.class12 ?? {}) },
+  },
+});
+
+export const profileUpdateData = (profile: StudentProfile) => ({
+  personalFullName: profile.personalInfo.fullName,
+  personalDob: profile.personalInfo.dob,
+  personalGender: profile.personalInfo.gender,
+  personalNationality: profile.personalInfo.nationality,
+  personalCategory: profile.personalInfo.category,
+  personalPhoneNumber: profile.personalInfo.phoneNumber,
+  personalAltPhoneNumber: profile.personalInfo.altPhoneNumber ?? null,
+  addressStreet: profile.personalInfo.address.street,
+  addressCity: profile.personalInfo.address.city,
+  addressState: profile.personalInfo.address.state,
+  addressPincode: profile.personalInfo.address.pincode,
+  addressCountry: profile.personalInfo.address.country,
+  fathersName: profile.personalInfo.fathersName ?? null,
+  mothersName: profile.personalInfo.mothersName ?? null,
+  class10Board: profile.academicInfo.class10.board,
+  class10SchoolName: profile.academicInfo.class10.schoolName,
+  class10PassingYear: profile.academicInfo.class10.passingYear,
+  class10Percentage: profile.academicInfo.class10.percentage,
+  class10RollNumber: profile.academicInfo.class10.rollNumber,
+  class10MaxMarks: profile.academicInfo.class10.maxMarks ?? null,
+  class10ObtainedMarks: profile.academicInfo.class10.obtainedMarks ?? null,
+  class12Status: profile.academicInfo.class12.status,
+  class12Board: profile.academicInfo.class12.board,
+  class12SchoolName: profile.academicInfo.class12.schoolName,
+  class12PassingYear: profile.academicInfo.class12.passingYear,
+  class12Percentage: profile.academicInfo.class12.percentage,
+  class12RollNumber: profile.academicInfo.class12.rollNumber,
+  class12Stream: profile.academicInfo.class12.stream,
+  class12Subjects: profile.academicInfo.class12.subjects,
+  currentQualification: profile.academicInfo.currentQualification,
+  academicInstitution: profile.academicInfo.institution,
+  cgpaOrPercentage: profile.academicInfo.cgpaOrPercentage ?? null,
+  yearOfGraduation: profile.academicInfo.yearOfGraduation ?? null,
+  preferredExamCategories: profile.preferredExamCategories ?? [],
+});
+
+const documentData = (document: DocumentRecord) => ({
+  id: document.id,
+  type: document.type,
+  title: document.title,
+  description: document.description,
+  requiredFor: document.requiredFor,
+  status: document.status,
+  fileUrl: document.fileUrl ?? null,
+  fileName: document.fileName ?? null,
+  mimeType: document.mimeType ?? null,
+  fileSize: document.fileSize ?? null,
+  uploadedAt: document.uploadedAt ? dateFromIso(document.uploadedAt) : null,
+  extractedData: jsonValueOrNull(document.extractedData),
+  detailedExtraction: jsonValueOrNull(document.detailedExtraction),
+  confidenceScore: document.confidenceScore ?? null,
+});
+
+const examData = (exam: ExamItem) => ({
+  id: exam.id,
+  slug: exam.slug ?? exam.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+  name: exam.name,
+  fullName: exam.fullName,
+  authority: exam.authority,
+  category: exam.category,
+  description: exam.description,
+  eligibilitySummary: exam.eligibilitySummary,
+  criteria: jsonValue(exam.criteria),
+  applicationOpenDate: exam.applicationOpenDate,
+  applicationDeadline: exam.applicationDeadline,
+  admitCardDate: exam.admitCardDate,
+  examDate: exam.examDate,
+  feeINR: jsonValue(exam.feeINR),
+  officialWebsite: exam.officialWebsite,
+  conductingBody: exam.authority,
+  popularCourses: exam.popularCourses,
+  documentsRequired: exam.documentsRequired,
+  status: exam.status,
+  sourceUrl: exam.sourceUrl ?? null,
+  verifiedAt: exam.verifiedAt ? dateFromIso(exam.verifiedAt) : null,
+  applicationFields: exam.applicationFields ? jsonValue(exam.applicationFields) : Prisma.JsonNull,
+});
+
+export class DatabaseManager {
+  constructor(private readonly injectedClient?: PrismaClient) {}
+
+  private get client(): PrismaClient {
+    return this.injectedClient ?? getPrismaClient();
   }
 
-  private loadDatabase(): DatabaseSchema {
-    try {
-      if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        return JSON.parse(raw);
-      }
-    } catch (err) {
-      console.warn('[Database] Could not read existing database file, initializing defaults:', err);
-    }
+  async checkConnection(): Promise<void> {
+    await this.client.$queryRaw`SELECT 1`;
+  }
 
-    const initialDb: DatabaseSchema = {
-      users: defaultUsers,
-      profiles: defaultProfiles,
-      documents: defaultDocuments,
-      applications: defaultApplications,
-      exams: defaultExams,
+  async getUserById(userId: string): Promise<UserAccount | undefined> {
+    const user = await this.client.user.findUnique({ where: { id: userId } });
+    return user ? userFromRow(user) : undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<UserAccount | undefined> {
+    const user = await this.client.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    return user ? userFromRow(user) : undefined;
+  }
+
+  async getSession(tokenHash: string): Promise<{ userId: string; expiresAt: number } | undefined> {
+    const session = await this.client.session.findUnique({ where: { tokenHash } });
+    return session ? { userId: session.userId, expiresAt: session.expiresAt.getTime() } : undefined;
+  }
+
+  async saveSession(tokenHash: string, userId: string, expiresAt: number): Promise<void> {
+    await this.client.session.upsert({
+      where: { tokenHash },
+      create: { tokenHash, userId, expiresAt: new Date(expiresAt) },
+      update: { userId, expiresAt: new Date(expiresAt) },
+    });
+  }
+
+  async deleteSession(tokenHash: string): Promise<void> {
+    await this.client.session.deleteMany({ where: { tokenHash } });
+  }
+
+  async deleteSessionsForUser(userId: string): Promise<void> {
+    await this.client.session.deleteMany({ where: { userId } });
+  }
+
+  async updatePasswordAndRevokeSessions(userId: string, passwordHash: string): Promise<void> {
+    await this.client.$transaction(async (transaction) => {
+      const result = await transaction.user.updateMany({
+        where: { id: userId },
+        data: { passwordHash, passwordResetToken: null, passwordResetExpiresAt: null },
+      });
+      if (!result.count) throw new Error('User not found.');
+      await transaction.session.deleteMany({ where: { userId } });
+    });
+  }
+
+  async getUserByPasswordResetToken(tokenHash: string): Promise<UserAccount | undefined> {
+    const user = await this.client.user.findFirst({
+      where: { passwordResetTokenHash: tokenHash, passwordResetExpiresAt: { gt: new Date() } },
+    });
+    return user ? userFromRow(user) : undefined;
+  }
+
+  async updateUser(userId: string, updates: Partial<UserAccount>): Promise<UserAccount | undefined> {
+    const result = await this.client.user.updateMany({ where: { id: userId }, data: userUpdateData(updates) });
+    if (!result.count) return undefined;
+    return this.getUserById(userId);
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    await this.client.user.deleteMany({ where: { id: userId } });
+  }
+
+  async createUser(account: UserAccount, initialProfile?: StudentProfile): Promise<UserAccount> {
+    if (!account.passwordHash) throw new Error('A password hash is required to create an account.');
+    const profile = initialProfile ?? this.createEmptyProfile(account);
+    if (profile.id !== account.id) throw new Error('The initial profile owner does not match the account.');
+    const user = await this.client.user.create({
+      data: {
+        id: account.id,
+        email: account.email.trim().toLowerCase(),
+        fullName: account.fullName,
+        avatarUrl: account.avatarUrl ?? null,
+        isVerified: account.isVerified,
+        role: account.role ?? null,
+        institution: account.institution ?? null,
+        passwordHash: account.passwordHash,
+        otpHash: account.otpHash ?? null,
+        otpExpiresAt: dateFromMilliseconds(account.otpExpiresAt),
+        otpAttemptsRemaining: account.otpAttemptsRemaining ?? null,
+        lastOtpSentAt: dateFromMilliseconds(account.lastOtpSentAt),
+        passwordResetTokenHash: account.passwordResetToken ?? null,
+        passwordResetExpiresAt: dateFromMilliseconds(account.passwordResetExpiresAt),
+        createdAt: dateFromIso(account.createdAt),
+        profile: { create: profileUpdateData(profile) },
+      },
+    });
+    return userFromRow(user);
+  }
+
+  async getProfile(userId: string): Promise<StudentProfile | undefined> {
+    const profile = await this.client.userProfile.findUnique({
+      where: { userId },
+      include: { user: { select: { email: true } } },
+    });
+    return profile ? profileFromRow(profile) : undefined;
+  }
+
+  async updateProfile(userId: string, updates: Partial<StudentProfile>): Promise<StudentProfile> {
+    return this.client.$transaction(async (transaction) => {
+      const current = await transaction.userProfile.findUnique({
+        where: { userId },
+        include: { user: { select: { email: true } } },
+      });
+      if (!current) throw new Error('Profile not found.');
+      const merged = mergeProfile(profileFromRow(current), updates);
+      await transaction.userProfile.update({ where: { userId }, data: profileUpdateData(merged) });
+      if (updates.personalInfo?.fullName) {
+        await transaction.user.update({ where: { id: userId }, data: { fullName: updates.personalInfo.fullName } });
+      }
+      return merged;
+    });
+  }
+
+  async getDocuments(userId: string): Promise<DocumentRecord[]> {
+    const documents = await this.client.document.findMany({ where: { userId }, orderBy: { uploadedAt: 'desc' } });
+    return documents.map(documentFromRow);
+  }
+
+  async saveDocument(userId: string, document: DocumentRecord): Promise<DocumentRecord[]> {
+    await this.client.document.upsert({
+      where: { userId_type: { userId, type: document.type } },
+      create: { ...documentData(document), userId },
+      update: documentData(document),
+    });
+    return this.getDocuments(userId);
+  }
+
+  async updateDocument(userId: string, docId: string, updates: Partial<DocumentRecord>): Promise<DocumentRecord[]> {
+    const result = await this.client.document.updateMany({
+      where: { id: docId, userId },
+      data: {
+        ...(updates.title === undefined ? {} : { title: updates.title }),
+        ...(updates.description === undefined ? {} : { description: updates.description }),
+      },
+    });
+    if (!result.count) throw new Error('Document not found.');
+    return this.getDocuments(userId);
+  }
+
+  async confirmDocumentExtraction(
+    userId: string,
+    docId: string,
+    profileUpdates: Partial<StudentProfile>,
+    extraction: Record<string, ExtractedFieldData>,
+    extractedData: Record<string, string | number>,
+  ): Promise<{ profile: StudentProfile; documents: DocumentRecord[] }> {
+    const result = await this.client.$transaction(async (transaction) => {
+      const [profileRow, document] = await Promise.all([
+        transaction.userProfile.findUnique({
+          where: { userId },
+          include: { user: { select: { email: true } } },
+        }),
+        transaction.document.findFirst({ where: { id: docId, userId, fileUrl: { not: null } } }),
+      ]);
+      if (!profileRow || !document) throw new Error('Uploaded document or profile was not found.');
+
+      const profile = mergeProfile(profileFromRow(profileRow), profileUpdates);
+      const confidenceValues = Object.values(extraction)
+        .filter((field) => field.value && !field.manuallyEdited)
+        .map((field) => field.confidence);
+      const confidenceScore = !Object.values(extraction).some((field) => field.manuallyEdited) && confidenceValues.length
+        ? Math.round(confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length)
+        : null;
+
+      await transaction.userProfile.update({ where: { userId }, data: profileUpdateData(profile) });
+      await transaction.document.update({
+        where: { id: document.id },
+        data: {
+          status: 'Pending Review',
+          detailedExtraction: jsonValue(extraction),
+          extractedData: jsonValue(extractedData),
+          confidenceScore,
+        },
+      });
+      const documents = await transaction.document.findMany({ where: { userId }, orderBy: { uploadedAt: 'desc' } });
+      return { profile, documents: documents.map(documentFromRow) };
+    });
+    if (profileUpdates.personalInfo?.fullName) {
+      await this.client.user.update({ where: { id: userId }, data: { fullName: profileUpdates.personalInfo.fullName } });
+    }
+    return result;
+  }
+
+  async deleteDocument(userId: string, docId: string): Promise<DocumentRecord[]> {
+    await this.client.document.deleteMany({ where: { id: docId, userId } });
+    return this.getDocuments(userId);
+  }
+
+  async getApplications(userId: string): Promise<ApplicationRecord[]> {
+    const applications = await this.client.application.findMany({
+      where: { userId },
+      include: { exam: true },
+      orderBy: { lastUpdated: 'desc' },
+    });
+    return applications.map(applicationFromRow);
+  }
+
+  async saveApplication(
+    userId: string,
+    application: Partial<ApplicationRecord> & { examId: string },
+  ): Promise<ApplicationRecord> {
+    return this.client.$transaction(async (transaction) => {
+      const examRow = await transaction.exam.findFirst({
+        where: { id: application.examId, verifiedAt: { not: null }, AND: [{ sourceUrl: { not: null } }, { NOT: { sourceUrl: '' } }] },
+      });
+      if (!examRow) throw new Error('Cannot save an application without an available verified exam record.');
+
+      const existing = await transaction.application.findUnique({
+        where: { userId_examId: { userId, examId: examRow.id } },
+      });
+      const data = {
+        status: application.status ?? existing?.status ?? 'In Progress',
+        progressPercent: application.progressPercent ?? existing?.progressPercent ?? 0,
+        applicationNumber: application.applicationNumber ?? existing?.applicationNumber ?? null,
+        missingFields: application.missingFields ?? existing?.missingFields ?? [],
+        mappedFieldsCount: application.mappedFieldsCount ?? existing?.mappedFieldsCount ?? 0,
+        totalFieldsCount: application.totalFieldsCount ?? existing?.totalFieldsCount ?? 0,
+        submittedAt: application.submittedAt === undefined
+          ? existing?.submittedAt ?? null
+          : application.submittedAt
+            ? dateFromIso(application.submittedAt)
+            : null,
+      };
+      const saved = existing
+        ? await transaction.application.update({ where: { id: existing.id }, data, include: { exam: true } })
+        : await transaction.application.create({
+            data: { ...data, userId, examId: examRow.id },
+            include: { exam: true },
+          });
+      return applicationFromRow(saved);
+    });
+  }
+
+  async getExams(): Promise<ExamItem[]> {
+    const exams = await this.client.exam.findMany({
+      where: { verifiedAt: { not: null }, AND: [{ sourceUrl: { not: null } }, { NOT: { sourceUrl: '' } }] },
+      orderBy: { applicationDeadline: 'asc' },
+    });
+    return exams.map(examFromRow);
+  }
+
+  async getExamById(examId: string): Promise<ExamItem | undefined> {
+    const exam = await this.client.exam.findFirst({
+      where: { id: examId, verifiedAt: { not: null }, AND: [{ sourceUrl: { not: null } }, { NOT: { sourceUrl: '' } }] },
+    });
+    return exam ? examFromRow(exam) : undefined;
+  }
+
+  async getExamDirectory(
+    filters: ExamDirectoryFilters,
+  ): Promise<ExamDirectoryQueryResult<ExamDirectoryEntry>> {
+    const where: Prisma.ExamWhereInput = {
+      verifiedAt: { not: null },
+      sourceUrl: { not: null },
+      AND: [{ NOT: { sourceUrl: '' } }],
+      ...(filters.category ? { category: filters.category } : {}),
+      ...(filters.level ? { level: filters.level } : {}),
+      ...(filters.state ? { state: filters.state } : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { name: { contains: filters.search, mode: 'insensitive' } },
+              { shortName: { contains: filters.search, mode: 'insensitive' } },
+              { fullName: { contains: filters.search, mode: 'insensitive' } },
+              { conductingBody: { contains: filters.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
     };
-    this.saveDatabase(initialDb);
-    return initialDb;
+    const rows = await this.client.exam.findMany({
+      where,
+      orderBy: { registrationEndDate: { sort: filters.sortOrder, nulls: 'last' } },
+    });
+    const filteredRows = rows.filter((row) => {
+      if (!filters.status) return true;
+      return getExamRegistrationStatus(
+        row.registrationStartDate?.toISOString().slice(0, 10) ?? null,
+        row.registrationEndDate?.toISOString().slice(0, 10) ?? null,
+      ) === filters.status;
+    });
+    const total = filteredRows.length;
+    const start = (filters.page - 1) * filters.limit;
+    return {
+      exams: filteredRows.slice(start, start + filters.limit).map(examDirectoryFromRow),
+      pagination: {
+        page: filters.page,
+        limit: filters.limit,
+        total,
+        totalPages: Math.ceil(total / filters.limit),
+      },
+    };
   }
 
-  private saveDatabase(dataToSave?: DatabaseSchema) {
-    try {
-      const dir = path.dirname(DB_FILE);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(DB_FILE, JSON.stringify(dataToSave || this.data, null, 2), 'utf-8');
-    } catch (err) {
-      console.error('[Database] Error saving database file:', err);
-    }
+  async getExamDirectoryBySlug(slug: string): Promise<ExamDirectoryEntry | undefined> {
+    const exam = await this.client.exam.findFirst({
+      where: {
+        slug,
+        verifiedAt: { not: null },
+        sourceUrl: { not: null },
+        AND: [{ NOT: { sourceUrl: '' } }],
+      },
+    });
+    return exam ? examDirectoryFromRow(exam) : undefined;
   }
 
-  // --- Users ---
-  getUsers(): UserAccount[] {
-    return this.data.users;
-  }
-
-  getUserById(userId: string): UserAccount | undefined {
-    return this.data.users.find(u => u.id === userId);
-  }
-
-  getUserByEmail(email: string): UserAccount | undefined {
-    return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-  }
-
-  createUser(account: UserAccount, initialProfile?: StudentProfile): UserAccount {
-    this.data.users.push(account);
-    const blankProfile: StudentProfile = initialProfile || {
+  private createEmptyProfile(account: UserAccount): StudentProfile {
+    return {
       id: account.id,
+      preferredExamCategories: [],
       personalInfo: {
         fullName: account.fullName,
         dob: '',
-        gender: 'Prefer not to say',
-        nationality: 'Indian',
-        category: 'General',
+        gender: '',
+        nationality: '',
+        category: '',
         email: account.email,
         phoneNumber: '',
-        address: { street: '', city: '', state: '', pincode: '', country: 'India' },
+        address: { street: '', city: '', state: '', pincode: '', country: '' },
       },
       academicInfo: {
-        class10: { board: '', schoolName: '', passingYear: new Date().getFullYear() - 2, percentage: 0, rollNumber: '' },
-        class12: { status: 'Passed', board: '', schoolName: '', passingYear: new Date().getFullYear(), percentage: 0, rollNumber: '', stream: 'PCM', subjects: [] },
-        currentQualification: 'Secondary School',
+        class10: { board: '', schoolName: '', passingYear: 0, percentage: 0, rollNumber: '' },
+        class12: { status: '', board: '', schoolName: '', passingYear: 0, percentage: 0, rollNumber: '', stream: '', subjects: [] },
+        currentQualification: '',
         institution: '',
       },
     };
-    this.data.profiles[account.id] = blankProfile;
-    this.data.documents[account.id] = [];
-    this.data.applications[account.id] = [];
-    this.saveDatabase();
-    return account;
-  }
-
-  // --- Profile ---
-  getProfile(userId: string): StudentProfile | undefined {
-    return this.data.profiles[userId];
-  }
-
-  updateProfile(userId: string, updates: Partial<StudentProfile>): StudentProfile {
-    const existing = this.data.profiles[userId];
-    if (!existing) {
-      throw new Error(`Profile not found for user: ${userId}`);
-    }
-
-    const updated: StudentProfile = {
-      ...existing,
-      ...updates,
-      personalInfo: {
-        ...existing.personalInfo,
-        ...(updates.personalInfo || {}),
-        address: {
-          ...existing.personalInfo.address,
-          ...(updates.personalInfo?.address || {}),
-        },
-      },
-      academicInfo: {
-        ...existing.academicInfo,
-        ...(updates.academicInfo || {}),
-        class10: {
-          ...existing.academicInfo.class10,
-          ...(updates.academicInfo?.class10 || {}),
-        },
-        class12: {
-          ...existing.academicInfo.class12,
-          ...(updates.academicInfo?.class12 || {}),
-        },
-      },
-    };
-
-    this.data.profiles[userId] = updated;
-
-    // Sync user's account name if updated
-    const user = this.data.users.find(u => u.id === userId);
-    if (user && updates.personalInfo?.fullName) {
-      user.fullName = updates.personalInfo.fullName;
-    }
-
-    this.saveDatabase();
-    return updated;
-  }
-
-  // --- Documents ---
-  getDocuments(userId: string): DocumentRecord[] {
-    return this.data.documents[userId] || [];
-  }
-
-  updateDocument(userId: string, docId: string, updates: Partial<DocumentRecord>): DocumentRecord[] {
-    if (!this.data.documents[userId]) {
-      this.data.documents[userId] = [];
-    }
-    const docs = this.data.documents[userId];
-    const index = docs.findIndex(d => d.id === docId);
-    if (index >= 0) {
-      docs[index] = { ...docs[index], ...updates };
-    } else {
-      docs.push({
-        id: docId,
-        type: updates.type || 'class12_marksheet',
-        title: updates.title || 'Uploaded Document',
-        description: updates.description || 'Uploaded examination document',
-        requiredFor: updates.requiredFor || ['All Competitive Exams'],
-        status: updates.status || 'Uploaded',
-        ...updates,
-      });
-    }
-    this.saveDatabase();
-    return docs;
-  }
-
-  deleteDocument(userId: string, docId: string): DocumentRecord[] {
-    if (this.data.documents[userId]) {
-      this.data.documents[userId] = this.data.documents[userId].filter(d => d.id !== docId);
-      this.saveDatabase();
-    }
-    return this.data.documents[userId] || [];
-  }
-
-  // --- Applications ---
-  getApplications(userId: string): ApplicationRecord[] {
-    return this.data.applications[userId] || [];
-  }
-
-  saveApplication(userId: string, application: Partial<ApplicationRecord> & { examId: string }): ApplicationRecord {
-    if (!this.data.applications[userId]) {
-      this.data.applications[userId] = [];
-    }
-    const apps = this.data.applications[userId];
-    const index = apps.findIndex(a => a.id === application.id || a.examId === application.examId);
-    
-    const exam = this.data.exams.find(e => e.id === application.examId);
-    const examName = exam?.name || application.examName || 'Examination Application';
-    const authority = exam?.authority || application.authority || 'Exam Conducting Authority';
-    const deadline = exam?.applicationDeadline || application.deadline || '2026-12-31';
-
-    let savedApp: ApplicationRecord;
-    if (index >= 0) {
-      savedApp = {
-        ...apps[index],
-        ...application,
-        lastUpdated: 'Just now',
-      };
-      apps[index] = savedApp;
-    } else {
-      savedApp = {
-        id: application.id || `app_${application.examId}_${Date.now()}`,
-        examId: application.examId,
-        examName,
-        authority,
-        status: application.status || 'In Progress',
-        progressPercent: application.progressPercent ?? 50,
-        lastUpdated: 'Just now',
-        deadline,
-        missingFields: application.missingFields || [],
-        mappedFieldsCount: application.mappedFieldsCount ?? 15,
-        totalFieldsCount: application.totalFieldsCount ?? 20,
-        officialPortalUrl: exam?.officialWebsite || 'https://nta.nic.in',
-      };
-      apps.push(savedApp);
-    }
-    this.saveDatabase();
-    return savedApp;
-  }
-
-  // --- Exams ---
-  getExams(): ExamItem[] {
-    return this.data.exams;
-  }
-
-  getExamById(examId: string): ExamItem | undefined {
-    return this.data.exams.find(e => e.id === examId);
   }
 }
 

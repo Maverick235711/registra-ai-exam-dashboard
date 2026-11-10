@@ -15,7 +15,6 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { RegistraIcon } from './RegistraLogo';
 
 interface HeaderProps {
   onOpenMobileSidebar: () => void;
@@ -33,8 +32,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
     openWorkflow, 
     setActiveTab,
     setUserModalOpen,
-    logout,
-    setLogoModalOpen 
+    logout
   } = useApp();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -116,17 +114,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
 
         {/* Right: Actions, Notifications & Dynamic Profile */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Logo Showcase Trigger */}
-          <button
-            type="button"
-            onClick={() => setLogoModalOpen(true)}
-            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60 border border-slate-200/80 transition-all"
-            title="Inspect Brand Identity"
-          >
-            <RegistraIcon size={14} className="text-indigo-600" />
-            <span className="text-[11px]">Brand Logo</span>
-          </button>
-
           {/* Quick Apply Action */}
           <button
             type="button"
@@ -165,6 +152,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
                   <button
                     type="button"
                     onClick={markNotificationsRead}
+                    disabled={unreadCount === 0}
                     className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold"
                   >
                     Mark all read
@@ -172,6 +160,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
                 </div>
 
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                  {notifications.length === 0 && (
+                    <p className="rounded-xl bg-slate-50 p-4 text-center text-xs text-slate-500">
+                      No notifications yet.
+                    </p>
+                  )}
                   {notifications.map((n) => (
                     <div
                       key={n.id}
@@ -269,7 +262,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50/70 rounded-lg text-left font-medium"
                 >
                   <Users className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Switch Account / Sign In</span>
+                  <span>Account / Sign In</span>
                 </button>
 
                 <button
@@ -294,7 +287,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg text-left"
                   >
                     <LogOut className="w-3.5 h-3.5 text-rose-500" />
-                    <span>Sign Out (Switch to Guest)</span>
+                    <span>Sign Out</span>
                   </button>
                 </div>
               </div>

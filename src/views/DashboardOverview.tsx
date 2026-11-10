@@ -18,7 +18,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { getDaysRemaining } from '../utils/eligibilityEngine';
+import { evaluateEligibility } from '../utils/eligibilityEngine';
 
 export const DashboardOverview: React.FC = () => {
   const { 
@@ -36,45 +36,24 @@ export const DashboardOverview: React.FC = () => {
   } = useApp();
 
   const firstName = profile.personalInfo.fullName ? profile.personalInfo.fullName.split(' ')[0] : (currentUser?.fullName?.split(' ')[0] || 'Candidate');
+  const storageUsageLabel = dashboardStats
+    ? dashboardStats.documents.storageBytes < 1024 * 1024
+      ? `${(dashboardStats.documents.storageBytes / 1024).toFixed(1)} KB`
+      : `${(dashboardStats.documents.storageBytes / (1024 * 1024)).toFixed(2)} MB`
+    : 'Unavailable';
 
   // Dynamic Metrics
-  const inProgressApps = applications.filter(a => a.status === 'In Progress' || a.status === 'Pending' || a.status === 'Needs Review');
-  const inProgressCount = inProgressApps.length;
-  const completedCount = applications.filter(a => a.status === 'Completed').length;
-
-  const examsTotal = dashboardStats?.examsAvailable.total ?? exams.length;
-  const activeRegistrationsCount = dashboardStats?.examsAvailable.activeRegistration ?? exams.filter(e => e.status === 'Registration Open').length;
-  const eligibleExamsCount = dashboardStats?.examsAvailable.eligibleCount ?? exams.filter(e => e.status === 'Registration Open').length;
-
-  // Upcoming deadlines calculation
-  const upcomingDeadlinesList = dashboardStats?.upcomingDeadlines.items && dashboardStats.upcomingDeadlines.items.length > 0
-    ? dashboardStats.upcomingDeadlines.items
-    : exams
-        .map(e => ({
-          examId: e.id,
-          name: e.name,
-          authority: e.authority,
-          deadline: e.applicationDeadline,
-          daysRemaining: getDaysRemaining(e.applicationDeadline),
-          isUrgent: getDaysRemaining(e.applicationDeadline) <= 20,
-        }))
-        .filter(e => e.daysRemaining >= 0)
-        .sort((a, b) => a.daysRemaining - b.daysRemaining);
+  const applicationStats = dashboardStats?.applicationsInProgress;
+  const inProgressCount = applicationStats?.inProgress ?? null;
+  const examsTotal = dashboardStats?.examsAvailable.total ?? null;
+  const activeRegistrationsCount = dashboardStats?.examsAvailable.activeRegistration ?? null;
+  const eligibleExamsCount = dashboardStats?.examsAvailable.eligibleCount ?? null;
+  const upcomingDeadlinesList = dashboardStats?.upcomingDeadlines.items ?? [];
 
   const upcomingDeadlinesCount = upcomingDeadlinesList.length;
   const nearestDeadline = upcomingDeadlinesList[0] || null;
 
-  // Dynamic Field Reuse Analytics
-  const analyticsData = dashboardStats?.fieldReuseAnalytics || [
-    { examId: 'exam_jee_main', name: 'JEE Main', autoMapped: 20, manualReview: 2, savedMins: 40, percentAuto: 91 },
-    { examId: 'exam_cuet_ug', name: 'CUET UG', autoMapped: 20, manualReview: 2, savedMins: 40, percentAuto: 91 },
-    { examId: 'exam_bitsat', name: 'BITSAT', autoMapped: 19, manualReview: 3, savedMins: 38, percentAuto: 86 },
-    { examId: 'exam_gate', name: 'GATE', autoMapped: 18, manualReview: 4, savedMins: 36, percentAuto: 82 },
-  ];
-
-  const totalAutoMapped = analyticsData.reduce((acc, curr) => acc + curr.autoMapped, 0);
-  const totalSavedMinutes = analyticsData.reduce((acc, curr) => acc + curr.savedMins, 0);
-  const totalSavedHours = (totalSavedMinutes / 60).toFixed(1);
+  const analyticsData = dashboardStats?.fieldReuseAnalytics ?? [];
 
   // Filtered applications based on header search if active
   const displayedApps = applications.filter(app => 
@@ -83,7 +62,24 @@ export const DashboardOverview: React.FC = () => {
     app.authority.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const recommendedExams = exams.slice(0, 3);
+  const categoriesWithHistory = new Set(
+    applications
+      .map((application) => exams.find((exam) => exam.id === application.examId)?.category)
+      .filter((category): category is NonNullable<typeof category> => Boolean(category)),
+  );
+  const preferredCategories = new Set(profile.preferredExamCategories ?? []);
+  const recommendedExams = exams
+    .filter((exam) =>
+      !applications.some((application) => application.examId === exam.id) &&
+      evaluateEligibility(profile, exam).sufficientInformation &&
+      evaluateEligibility(profile, exam).isEligible,
+    )
+    .sort((a, b) =>
+      Number(preferredCategories.has(b.category)) - Number(preferredCategories.has(a.category)) ||
+      Number(categoriesWithHistory.has(b.category)) - Number(categoriesWithHistory.has(a.category)),
+    )
+    .slice(0, 3);
+  const firstExamId = exams[0]?.id;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
@@ -98,14 +94,14 @@ export const DashboardOverview: React.FC = () => {
             Unified National Exam Command Center
           </h2>
           <p className="text-sm text-slate-300 leading-relaxed mb-5">
-            Your single verified student profile eliminates repetitive form-filling across NTA, IIT, IIM, and UPSC applications. 
-            All documents and academic marks are verified and ready for instant mapping.
+            Saved profile information and uploaded documents are available for reuse when an examination's verified field requirements are configured. Review details before any official submission.
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => openWorkflow('exam_jee_main')}
+              onClick={() => firstExamId && openWorkflow(firstExamId)}
+              disabled={!firstExamId}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white text-xs font-semibold shadow-md shadow-indigo-500/30 hover:shadow-lg transition-all"
             >
               <Zap className="w-4 h-4" />
@@ -162,9 +158,13 @@ export const DashboardOverview: React.FC = () => {
             />
           </div>
           <p className="text-[11px] text-slate-400 mt-2 truncate">
-            {profileCompletion.sections.documents.completed 
-              ? 'All required documents verified' 
-              : `${profileCompletion.sections.documents.uploadedCount} / ${profileCompletion.sections.documents.requiredCount} documents uploaded`}
+            {profileCompletion.sections.documents.requiredCount - profileCompletion.sections.documents.uploadedCount} missing upload(s)
+            {' · '}{profileCompletion.sections.documents.pendingReviewCount} pending review
+          </p>
+          <p className="text-[11px] text-slate-400 mt-1 truncate">
+            {dashboardStats
+              ? `${dashboardStats.documents.uploadedCount} uploaded · ${storageUsageLabel} stored`
+              : 'Document storage unavailable'}
           </p>
         </div>
 
@@ -181,14 +181,14 @@ export const DashboardOverview: React.FC = () => {
           </div>
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
-              {examsTotal}
+              {examsTotal === null ? '—' : examsTotal}
             </span>
             <span className="text-xs font-semibold text-blue-600">
-              {activeRegistrationsCount} Active Registrations
+              {activeRegistrationsCount === null ? 'Registration status unavailable' : `${activeRegistrationsCount} Open Registrations`}
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-2 truncate">
-            {eligibleExamsCount} examinations match your current credentials
+            {eligibleExamsCount === null ? 'Eligibility matching unavailable' : `${eligibleExamsCount} examinations meet configured criteria`}
           </p>
         </div>
 
@@ -205,16 +205,16 @@ export const DashboardOverview: React.FC = () => {
           </div>
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
-              {inProgressCount}
+              {inProgressCount === null ? '—' : inProgressCount}
             </span>
             <span className="text-xs font-semibold text-amber-600">
-              {completedCount} Completed
+              {applicationStats ? `${applicationStats.submitted} submitted · ${applicationStats.completed} completed` : 'Application statuses unavailable'}
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-2 truncate">
-            {applications.length === 0 
-              ? 'No applications submitted yet' 
-              : `${applications.map(a => a.examName.split(' ')[0]).slice(0, 3).join(', ')} forms`}
+            {applicationStats
+              ? `${applicationStats.total} total · ${applicationStats.pending} pending · ${applicationStats.needsReview} review · ${applicationStats.rejected} rejected`
+              : 'Application status data unavailable'}
           </p>
         </div>
 
@@ -231,14 +231,14 @@ export const DashboardOverview: React.FC = () => {
           </div>
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
-              {upcomingDeadlinesCount}
+              {dashboardStats ? upcomingDeadlinesCount : '—'}
             </span>
             <span className={`text-xs font-semibold ${nearestDeadline && nearestDeadline.daysRemaining <= 15 ? 'text-rose-600' : 'text-slate-600'}`}>
               {nearestDeadline ? `Nearest: ${nearestDeadline.daysRemaining} Days` : 'No Deadlines'}
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-2 truncate">
-            {nearestDeadline ? `${nearestDeadline.name} (${nearestDeadline.deadline})` : 'All registrations current'}
+            {nearestDeadline ? `${nearestDeadline.name} (${nearestDeadline.deadline})` : dashboardStats ? 'No upcoming registration deadlines' : 'Deadline data unavailable'}
           </p>
         </div>
       </div>
@@ -322,7 +322,8 @@ export const DashboardOverview: React.FC = () => {
                   {profileCompletion.sections.documents.uploadedCount} / {profileCompletion.sections.documents.requiredCount} Uploaded
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5">
-                  {profileCompletion.sections.documents.completed ? 'Required Vault Clear' : 'Signature / Docs Missing'}
+                  {profileCompletion.sections.documents.requiredCount - profileCompletion.sections.documents.uploadedCount} missing upload(s)
+                  {' · '}{profileCompletion.sections.documents.pendingReviewCount} pending review
                 </div>
               </div>
 
@@ -357,35 +358,37 @@ export const DashboardOverview: React.FC = () => {
                 <div className="flex items-center gap-4 text-[11px]">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm bg-indigo-600" />
-                    <span className="text-slate-600 font-medium">Auto-Mapped (Zero Repetition)</span>
+                    <span className="text-slate-600 font-medium">Mapped from saved profile</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm bg-amber-400" />
                     <span className="text-slate-600 font-medium">Manual Check</span>
                   </div>
-                  <div className="font-bold text-indigo-600 hidden md:block">
-                    {totalSavedHours} Hours Saved
-                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {analyticsData.length === 0 && (
+                  <p className="sm:col-span-2 lg:col-span-4 rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500">
+                    Field mapping is unavailable because verified exam records do not yet include application-field requirements.
+                  </p>
+                )}
                 {analyticsData.map((item) => {
-                  const total = item.autoMapped + item.manualReview;
+                  const total = item.total;
                   const autoWidth = total > 0 ? (item.autoMapped / total) * 100 : 0;
                   const manualWidth = 100 - autoWidth;
 
                   return (
-                    <div key={item.name} className="p-3 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+                    <div key={item.examId} className="p-3 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
                       <div className="flex items-center justify-between text-xs mb-1.5">
                         <span className="font-bold text-slate-800">{item.name}</span>
-                        <span className="text-[11px] font-semibold text-emerald-600">+{item.savedMins}m saved</span>
+                        <span className="text-[11px] font-semibold text-amber-700">{item.manualReview} for review</span>
                       </div>
                       
                       <div className="flex items-baseline gap-1.5 mb-2">
                         <span className="text-lg font-extrabold text-slate-900 tabular-nums">{item.autoMapped}</span>
                         <span className="text-[11px] text-slate-400">/ {total} fields</span>
-                        <span className="ml-auto text-[11px] font-bold text-indigo-600">{item.percentAuto}% auto</span>
+                        <span className="ml-auto text-[11px] font-bold text-indigo-600">{item.percentAuto}% mapped</span>
                       </div>
 
                       {/* Stacked Progress Bar */}
@@ -393,7 +396,7 @@ export const DashboardOverview: React.FC = () => {
                         <div 
                           className="bg-indigo-600 h-full transition-all duration-500" 
                           style={{ width: `${autoWidth}%` }}
-                          title={`Auto-Mapped: ${item.autoMapped} fields`}
+                          title={`Mapped from profile or verified documents: ${item.autoMapped} fields`}
                         />
                         <div 
                           className="bg-amber-400 h-full transition-all duration-500" 
@@ -536,6 +539,13 @@ export const DashboardOverview: React.FC = () => {
             </div>
 
             <div className="space-y-3">
+              {upcomingDeadlinesList.length === 0 && (
+                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+                  {dashboardStats
+                    ? 'No verified upcoming registration deadlines are available.'
+                    : 'Upcoming deadline data is unavailable.'}
+                </p>
+              )}
               {upcomingDeadlinesList.slice(0, 4).map((exam) => {
                 const daysLeft = exam.daysRemaining;
                 const isUrgent = exam.isUrgent;
@@ -581,6 +591,11 @@ export const DashboardOverview: React.FC = () => {
             </div>
 
             <div className="space-y-3">
+              {recommendedExams.length === 0 && (
+                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+                  No recommendations can be made from the available verified exam criteria and saved eligibility information.
+                </p>
+              )}
               {recommendedExams.map((exam) => (
                 <div 
                   key={exam.id}

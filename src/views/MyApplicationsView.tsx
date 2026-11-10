@@ -18,19 +18,15 @@ import { useApp } from '../context/AppContext';
 import { ApplicationRecord } from '../types';
 
 export const MyApplicationsView: React.FC = () => {
-  const { applications, openWorkflow, addToast } = useApp();
+  const { applications, exams, openWorkflow } = useApp();
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [activeAppModal, setActiveAppModal] = useState<ApplicationRecord | null>(null);
 
-  const statuses = ['All', 'In Progress', 'Completed', 'Pending', 'Needs Review'];
+  const statuses = ['All', 'In Progress', 'Pending', 'Needs Review', 'Submitted', 'Completed', 'Rejected'];
 
   const filteredApps = applications.filter(app => 
     selectedStatus === 'All' || app.status === selectedStatus
   );
-
-  const handleDownloadSlip = (app: ApplicationRecord) => {
-    addToast(`Generated verification slip for ${app.examName}`, 'success');
-  };
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
@@ -40,18 +36,18 @@ export const MyApplicationsView: React.FC = () => {
           <div className="flex items-center gap-2 mb-1">
             <h2 className="text-lg font-bold text-slate-900">Application Pipeline</h2>
             <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Zero Form Repetition
+              Personal Application Records
             </span>
           </div>
           <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
-            Every field you fill once is automatically synchronized across all entrance exam registrations. 
-            Review drafts and manage official portal submission tokens.
+            Review application records saved to your account. REGISTRA does not synchronize or submit applications to exam portals.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => openWorkflow('exam_jee_main')}
+          onClick={() => exams[0] && openWorkflow(exams[0].id)}
+          disabled={!exams.length}
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-sm transition-all"
         >
           <Zap className="w-3.5 h-3.5" />
@@ -107,6 +103,8 @@ export const MyApplicationsView: React.FC = () => {
               {filteredApps.map((app) => {
                 let badgeClass = 'bg-slate-100 text-slate-700';
                 if (app.status === 'Completed') badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                if (app.status === 'Submitted') badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                if (app.status === 'Rejected') badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200';
                 if (app.status === 'In Progress') badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200';
                 if (app.status === 'Pending') badgeClass = 'bg-amber-50 text-amber-700 border border-amber-200';
                 if (app.status === 'Needs Review') badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200';
@@ -115,7 +113,7 @@ export const MyApplicationsView: React.FC = () => {
                   <tr key={app.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-4 pl-1">
                       <div className="font-bold text-slate-900">{app.examName}</div>
-                      <div className="text-[11px] font-mono text-slate-400">{app.applicationNumber || 'Draft Mode'}</div>
+                      <div className="text-[11px] font-mono text-slate-400">                      {app.applicationNumber || 'REGISTRA draft'}</div>
                     </td>
                     <td className="py-4 text-slate-600">{app.authority}</td>
                     <td className="py-4">
@@ -128,16 +126,16 @@ export const MyApplicationsView: React.FC = () => {
                         <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
                           <div
                             className="bg-indigo-600 h-1.5 rounded-full"
-                            style={{ width: `${(app.mappedFieldsCount / app.totalFieldsCount) * 100}%` }}
+                            style={{ width: `${app.totalFieldsCount > 0 ? (app.mappedFieldsCount / app.totalFieldsCount) * 100 : 0}%` }}
                           />
                         </div>
                         <span className="text-[11px] font-mono text-slate-500 tabular-nums">
-                          {app.mappedFieldsCount}/{app.totalFieldsCount}
+                          {app.totalFieldsCount > 0 ? `${app.mappedFieldsCount}/${app.totalFieldsCount}` : 'Requirements unavailable'}
                         </span>
                       </div>
                     </td>
-                    <td className="py-4 text-slate-500 tabular-nums">{app.lastUpdated}</td>
-                    <td className="py-4 text-slate-800 font-semibold tabular-nums">{app.deadline}</td>
+                    <td className="py-4 text-slate-500 tabular-nums">{Number.isNaN(Date.parse(app.lastUpdated)) ? app.lastUpdated : new Date(app.lastUpdated).toLocaleString()}</td>
+                    <td className="py-4 text-slate-800 font-semibold tabular-nums">{app.deadline || 'Not published'}</td>
                     <td className="py-4 text-right pr-1">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -149,13 +147,13 @@ export const MyApplicationsView: React.FC = () => {
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {app.status === 'Completed' ? (
+                        {app.status === 'Completed' && app.submittedAt && app.applicationNumber ? (
                           <button
                             type="button"
-                            onClick={() => handleDownloadSlip(app)}
+                            onClick={() => window.open(app.officialPortalUrl, '_blank', 'noopener,noreferrer')}
                             className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] transition-colors"
                           >
-                            Slip
+                            Portal
                           </button>
                         ) : (
                           <button
@@ -231,7 +229,7 @@ export const MyApplicationsView: React.FC = () => {
               )}
 
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 text-[11px] leading-relaxed">
-                <strong>Zero Repetition Guarantee:</strong> Once verified, your candidate name, date of birth, category, 10th and 12th marks, photo, and signature remain sealed in your REGISTRA profile.
+                Saved profile values and uploaded documents are reused only when this examination has matching configured fields. Review every mapped value; REGISTRA does not verify external records or submit applications to exam portals.
               </div>
             </div>
 

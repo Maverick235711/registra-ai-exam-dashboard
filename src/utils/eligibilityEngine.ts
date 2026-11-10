@@ -1,291 +1,362 @@
-import { StudentProfile, DocumentRecord, ExamItem, EligibilityResult } from '../types';
+import { DocumentRecord, DocumentType, EligibilityResult, ExamItem, StudentProfile } from '../types';
 
-/**
- * Calculates student age in years from date of birth (YYYY-MM-DD).
- */
-export function calculateAge(dobString: string, referenceDateString: string = '2026-08-01'): number {
-  if (!dobString) return 0;
-  const dob = new Date(dobString);
-  const ref = new Date(referenceDateString);
-  if (isNaN(dob.getTime()) || isNaN(ref.getTime())) return 0;
+export const REQUIRED_PROFILE_DOCUMENTS: DocumentType[] = [
+  'class10_marksheet',
+  'class12_marksheet',
+  'photograph',
+  'signature',
+  'identity_proof',
+];
 
-  let age = ref.getFullYear() - dob.getFullYear();
-  const m = ref.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && ref.getDate() < dob.getDate())) {
-    age--;
-  }
-  return age;
-}
-
-/**
- * Calculates remaining days until a deadline.
- */
-export function getDaysRemaining(deadlineDateString: string, referenceDateString?: string): number {
-  if (!deadlineDateString) return 0;
-  const deadline = new Date(deadlineDateString);
-  const ref = referenceDateString ? new Date(referenceDateString) : new Date();
-  if (isNaN(deadline.getTime()) || isNaN(ref.getTime())) return 0;
-  
-  const diffTime = deadline.getTime() - ref.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-}
-
-/**
- * Calculates profile completion breakdown strictly from actual user data.
- * Never returns 100% unless all mandatory sections are genuinely complete.
- */
-export function calculateProfileCompletion(
-  profile: StudentProfile,
-  documents: DocumentRecord[] = []
-): {
-  overall: number;
-  sections: {
-    personal: { completed: boolean; score: number; filledCount: number; totalCount: number };
-    academic: { completed: boolean; score: number; filledCount: number; totalCount: number };
-    documents: { completed: boolean; score: number; uploadedCount: number; requiredCount: number };
-    contact: { completed: boolean; score: number; filledCount: number; totalCount: number };
-  };
-} {
-  const p = profile?.personalInfo || ({} as any);
-  const a = profile?.academicInfo || ({} as any);
-  const c10 = a?.class10 || {};
-  const c12 = a?.class12 || {};
-  const addr = p?.address || {};
-
-  // 1. Personal Details (Core demographic fields)
-  const personalFields = [
-    p.fullName,
-    p.dob,
-    p.gender,
-    p.nationality,
-    p.category,
-  ];
-  const personalFilled = personalFields.filter(val => val !== undefined && val !== null && String(val).trim() !== '').length;
-  const personalScore = Math.round((personalFilled / personalFields.length) * 100);
-
-  // 2. Contact Details
-  const contactFields = [
-    p.email,
-    p.phoneNumber,
-    addr.city,
-    addr.state,
-    addr.pincode,
-  ];
-  const contactFilled = contactFields.filter(val => val !== undefined && val !== null && String(val).trim() !== '').length;
-  const contactScore = Math.round((contactFilled / contactFields.length) * 100);
-
-  // 3. Academic Details
-  const academicFields = [
-    c10.board,
-    c10.percentage,
-    c10.rollNumber,
-    c12.board,
-    c12.percentage,
-    c12.stream,
-    a.currentQualification,
-  ];
-  const academicFilled = academicFields.filter(val => val !== undefined && val !== null && String(val).trim() !== '' && Number(val) !== 0).length;
-  const academicScore = Math.round((academicFilled / academicFields.length) * 100);
-
-  // 4. Mandatory Documents
-  const requiredDocs = ['class10_marksheet', 'class12_marksheet', 'photograph', 'signature', 'identity_proof'];
-  const uploadedCount = requiredDocs.filter(reqType => {
-    const doc = documents.find(d => d.type === reqType);
-    return doc && (doc.status === 'Verified' || doc.status === 'Uploaded' || Boolean(doc.fileUrl));
-  }).length;
-  const docScore = Math.round((uploadedCount / requiredDocs.length) * 100);
-
-  // Strict completion rule: Only 100% if every section is 100% completed
-  const isTrulyComplete = personalScore === 100 && contactScore === 100 && academicScore === 100 && docScore === 100;
-  const weightedOverall = Math.round((personalScore * 0.25) + (contactScore * 0.20) + (academicScore * 0.30) + (docScore * 0.25));
-  const overall = isTrulyComplete ? 100 : Math.min(99, weightedOverall);
-
+export function createEmptyProfile(): StudentProfile {
   return {
-    overall,
-    sections: {
-      personal: { completed: personalScore === 100, score: personalScore, filledCount: personalFilled, totalCount: personalFields.length },
-      contact: { completed: contactScore === 100, score: contactScore, filledCount: contactFilled, totalCount: contactFields.length },
-      academic: { completed: academicScore === 100, score: academicScore, filledCount: academicFilled, totalCount: academicFields.length },
-      documents: { completed: docScore >= 80, score: docScore, uploadedCount: uploadedCount, requiredCount: requiredDocs.length },
+    id: '',
+    preferredExamCategories: [],
+    personalInfo: {
+      fullName: '',
+      dob: '',
+      gender: '',
+      nationality: '',
+      category: '',
+      email: '',
+      phoneNumber: '',
+      address: { street: '', city: '', state: '', pincode: '', country: '' },
+      fathersName: '',
+      mothersName: '',
+    },
+    academicInfo: {
+      class10: { board: '', schoolName: '', passingYear: 0, percentage: 0, rollNumber: '' },
+      class12: {
+        status: '',
+        board: '',
+        schoolName: '',
+        passingYear: 0,
+        percentage: 0,
+        rollNumber: '',
+        stream: '',
+        subjects: [],
+      },
+      currentQualification: '',
+      institution: '',
     },
   };
 }
 
-/**
- * Pure evaluation engine checking candidate profile against specific examination criteria.
- */
-export function evaluateEligibility(profile: StudentProfile, exam: ExamItem, referenceDateString: string = '2026-11-08'): EligibilityResult {
+const currentDateOnly = () => new Date().toISOString().slice(0, 10);
+
+const parseDateOnly = (value: string): Date | null => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? null : date;
+};
+
+export function getRegistrationStatus(
+  openDate: string,
+  deadline: string,
+  referenceDate: string = currentDateOnly(),
+): 'Registration Open' | 'Upcoming' | 'Closed' | 'Unknown' {
+  const open = parseDateOnly(openDate);
+  const close = parseDateOnly(deadline);
+  const today = parseDateOnly(referenceDate);
+  if (!open || !close || !today || close < open) return 'Unknown';
+  if (today < open) return 'Upcoming';
+  if (today <= close) return 'Registration Open';
+  return 'Closed';
+}
+
+export function calculateAge(dobString: string, referenceDateString: string = currentDateOnly()): number | null {
+  const dob = parseDateOnly(dobString);
+  const ref = parseDateOnly(referenceDateString);
+  if (!dob || !ref || dob > ref) return null;
+
+  let age = ref.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDifference = ref.getUTCMonth() - dob.getUTCMonth();
+  if (monthDifference < 0 || (monthDifference === 0 && ref.getUTCDate() < dob.getUTCDate())) age -= 1;
+  return age;
+}
+
+export function getDaysRemaining(deadlineDateString: string, referenceDateString: string = currentDateOnly()): number | null {
+  const deadline = parseDateOnly(deadlineDateString);
+  const referenceDate = parseDateOnly(referenceDateString);
+  if (!deadline || !referenceDate) return null;
+  return Math.round((deadline.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+const hasValue = (value: unknown): boolean => {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== undefined && value !== null;
+};
+
+export function calculateProfileCompletion(profile: StudentProfile, documents: DocumentRecord[] = []): {
+  overall: number;
+  sections: {
+    personal: { completed: boolean; score: number; filledCount: number; totalCount: number };
+    academic: { completed: boolean; score: number; filledCount: number; totalCount: number };
+    documents: { completed: boolean; score: number; uploadedCount: number; pendingReviewCount: number; requiredCount: number };
+    contact: { completed: boolean; score: number; filledCount: number; totalCount: number };
+  };
+} {
+  const { personalInfo: personal, academicInfo: academic } = profile;
+  const personalFields: unknown[] = [
+    personal.fullName,
+    personal.dob,
+    personal.gender,
+    personal.nationality,
+    personal.category,
+  ];
+  const contactFields: unknown[] = [
+    personal.email,
+    personal.phoneNumber,
+    personal.address.street,
+    personal.address.city,
+    personal.address.state,
+    personal.address.pincode,
+    personal.address.country,
+  ];
+  const academicFields: unknown[] = [
+    academic.class10.board,
+    academic.class10.schoolName,
+    academic.class10.passingYear,
+    academic.class10.percentage,
+    academic.class10.rollNumber,
+    academic.class12.status,
+    academic.class12.board,
+    academic.class12.schoolName,
+    academic.class12.passingYear,
+    academic.class12.percentage,
+    academic.class12.rollNumber,
+    academic.class12.stream,
+    academic.class12.subjects,
+    academic.currentQualification,
+  ];
+  const filled = (fields: unknown[]) => fields.filter(hasValue).length;
+  const section = (fields: unknown[]) => {
+    const filledCount = filled(fields);
+    const score = Math.round((filledCount / fields.length) * 100);
+    return { completed: score === 100, score, filledCount, totalCount: fields.length };
+  };
+
+  const uploadedTypes = REQUIRED_PROFILE_DOCUMENTS.filter((type) => {
+    const document = documents.find((item) => item.type === type);
+    return Boolean(document?.fileUrl && ['Verified', 'Uploaded', 'Pending Review'].includes(document.status));
+  });
+  const pendingReviewCount = uploadedTypes.filter((type) => {
+    const document = documents.find((item) => item.type === type);
+    return document?.status !== 'Verified';
+  }).length;
+  const documentScore = Math.round((uploadedTypes.length / REQUIRED_PROFILE_DOCUMENTS.length) * 100);
+  const personalSection = section(personalFields);
+  const contactSection = section(contactFields);
+  const academicSection = section(academicFields);
+  const totalRequired = personalFields.length + contactFields.length + academicFields.length + REQUIRED_PROFILE_DOCUMENTS.length;
+  const totalComplete = personalSection.filledCount + contactSection.filledCount + academicSection.filledCount + uploadedTypes.length;
+
+  return {
+    overall: Math.round((totalComplete / totalRequired) * 100),
+    sections: {
+      personal: personalSection,
+      contact: contactSection,
+      academic: academicSection,
+      documents: {
+        completed: documentScore === 100,
+        score: documentScore,
+        uploadedCount: uploadedTypes.length,
+        pendingReviewCount,
+        requiredCount: REQUIRED_PROFILE_DOCUMENTS.length,
+      },
+    },
+  };
+}
+
+export function evaluateEligibility(
+  profile: StudentProfile,
+  exam: ExamItem,
+  referenceDateString: string = currentDateOnly(),
+): EligibilityResult {
   const checks: EligibilityResult['checks'] = [];
   const missingInfo: string[] = [];
   const { criteria } = exam;
+  let requiredCriteria = 0;
 
-  // 1. Age Check
-  const age = calculateAge(profile.personalInfo.dob, exam.applicationDeadline || referenceDateString);
   if (criteria.minAgeYears !== undefined || criteria.maxAgeYears !== undefined) {
-    let ageMet = true;
-    let expectedDesc = '';
-    if (criteria.minAgeYears !== undefined && criteria.maxAgeYears !== undefined) {
-      expectedDesc = `${criteria.minAgeYears} to ${criteria.maxAgeYears} years`;
-      ageMet = age >= criteria.minAgeYears && age <= criteria.maxAgeYears;
-    } else if (criteria.minAgeYears !== undefined) {
-      expectedDesc = `At least ${criteria.minAgeYears} years`;
-      ageMet = age >= criteria.minAgeYears;
-    } else if (criteria.maxAgeYears !== undefined) {
-      expectedDesc = `Maximum ${criteria.maxAgeYears} years`;
-      ageMet = age <= criteria.maxAgeYears;
-    }
-
+    requiredCriteria += 1;
+    const age = calculateAge(profile.personalInfo.dob, referenceDateString);
+    const met = age !== null &&
+      (criteria.minAgeYears === undefined || age >= criteria.minAgeYears) &&
+      (criteria.maxAgeYears === undefined || age <= criteria.maxAgeYears);
+    const expected = criteria.minAgeYears !== undefined && criteria.maxAgeYears !== undefined
+      ? `${criteria.minAgeYears} to ${criteria.maxAgeYears} years`
+      : criteria.minAgeYears !== undefined
+        ? `At least ${criteria.minAgeYears} years`
+        : `Maximum ${criteria.maxAgeYears} years`;
+    if (age === null) missingInfo.push('Date of birth');
     checks.push({
       criteriaName: 'Age Limit',
-      met: ageMet,
-      expected: expectedDesc,
-      actual: `${age} years (DOB: ${profile.personalInfo.dob || 'Not provided'})`,
-      notes: ageMet ? 'Within prescribed age bracket' : 'Age requirement violated based on exam notification cut-off date',
+      met,
+      expected,
+      actual: age === null ? 'Not provided or invalid' : `${age} years`,
+      notes: age === null ? 'Date of birth is required to assess the age criterion' : met ? 'Within prescribed age bracket' : 'Age requirement not met',
     });
   }
 
-  // 2. Class 12 Percentage Check
   if (criteria.minClass12Percentage !== undefined) {
-    const class12Pct = profile.academicInfo.class12.percentage || 0;
-    const pctMet = class12Pct >= criteria.minClass12Percentage;
+    requiredCriteria += 1;
+    const percentage = profile.academicInfo.class12.percentage;
+    const supplied = Number.isFinite(percentage) && percentage > 0;
+    const met = supplied && percentage >= criteria.minClass12Percentage;
+    if (!supplied) missingInfo.push('Class 12 percentage');
     checks.push({
       criteriaName: 'Class 12 Minimum Aggregate',
-      met: pctMet,
+      met,
       expected: `${criteria.minClass12Percentage}% or equivalent CGPA`,
-      actual: `${class12Pct}% (${profile.academicInfo.class12.board})`,
-      notes: pctMet ? 'Qualifying score satisfied' : `Short by ${(criteria.minClass12Percentage - class12Pct).toFixed(1)}%`,
+      actual: supplied ? `${percentage}%` : 'Not provided',
+      notes: !supplied ? 'Class 12 percentage is required to assess this criterion' : met ? 'Qualifying score satisfied' : `Short by ${(criteria.minClass12Percentage - percentage).toFixed(1)}%`,
     });
   }
 
-  // 3. Stream Check
-  if (criteria.requiredStream && criteria.requiredStream.length > 0) {
-    const candidateStream = profile.academicInfo.class12.stream;
-    const streamMet = criteria.requiredStream.includes(candidateStream);
+  if (criteria.minClass10Percentage !== undefined) {
+    requiredCriteria += 1;
+    const percentage = profile.academicInfo.class10.percentage;
+    const supplied = Number.isFinite(percentage) && percentage > 0;
+    const met = supplied && percentage >= criteria.minClass10Percentage;
+    if (!supplied) missingInfo.push('Class 10 percentage');
+    checks.push({
+      criteriaName: 'Class 10 Minimum Aggregate',
+      met,
+      expected: `${criteria.minClass10Percentage}% or equivalent`,
+      actual: supplied ? `${percentage}%` : 'Not provided',
+      notes: !supplied ? 'Class 10 percentage is required to assess this criterion' : met ? 'Qualifying score satisfied' : `Short by ${(criteria.minClass10Percentage - percentage).toFixed(1)}%`,
+    });
+  }
+
+  if (criteria.requiredStream?.length) {
+    requiredCriteria += 1;
+    const stream = profile.academicInfo.class12.stream;
+    const supplied = Boolean(stream);
+    const met = supplied && criteria.requiredStream.includes(stream);
+    if (!supplied) missingInfo.push('Class 12 stream');
     checks.push({
       criteriaName: 'Academic Stream / Disciplines',
-      met: streamMet,
+      met,
       expected: criteria.requiredStream.join(' or '),
-      actual: candidateStream,
-      notes: streamMet ? 'Stream criteria fulfilled' : `Requires ${criteria.requiredStream.join(', ')}`,
+      actual: supplied ? stream : 'Not provided',
+      notes: !supplied ? 'Class 12 stream is required to assess this criterion' : met ? 'Stream criteria fulfilled' : `Requires ${criteria.requiredStream.join(', ')}`,
     });
   }
 
-  // 4. Required Subjects Check
-  if (criteria.requiredSubjects && criteria.requiredSubjects.length > 0) {
-    const studentSubjects = profile.academicInfo.class12.subjects || [];
-    const missingSubs = criteria.requiredSubjects.filter(sub => 
-      !studentSubjects.some(s => s.toLowerCase().includes(sub.toLowerCase()))
+  if (criteria.requiredSubjects?.length) {
+    requiredCriteria += 1;
+    const subjects = profile.academicInfo.class12.subjects;
+    if (!subjects.length) missingInfo.push('Class 12 subjects');
+    const missingSubjects = criteria.requiredSubjects.filter((subject) =>
+      !subjects.some((item) => item.toLowerCase().includes(subject.toLowerCase())),
     );
-    const subsMet = missingSubs.length === 0;
-
+    const met = subjects.length > 0 && missingSubjects.length === 0;
     checks.push({
       criteriaName: 'Mandatory Subjects in 10+2',
-      met: subsMet,
+      met,
       expected: criteria.requiredSubjects.join(', '),
-      actual: studentSubjects.length ? studentSubjects.join(', ') : 'None listed',
-      notes: subsMet ? 'All mandatory subjects present' : `Missing: ${missingSubs.join(', ')}`,
+      actual: subjects.length ? subjects.join(', ') : 'Not provided',
+      notes: !subjects.length ? 'Class 12 subjects are required to assess this criterion' : met ? 'All mandatory subjects present' : `Missing: ${missingSubjects.join(', ')}`,
     });
   }
 
-  // 5. Qualification / Degree Check
-  if (criteria.allowedQualifications && criteria.allowedQualifications.length > 0) {
-    const candidateQual = profile.academicInfo.currentQualification;
-    const qualMet = criteria.allowedQualifications.some(q => 
-      candidateQual.toLowerCase().includes(q.toLowerCase())
-    );
+  if (criteria.allowedQualifications?.length) {
+    requiredCriteria += 1;
+    const qualification = profile.academicInfo.currentQualification;
+    const supplied = Boolean(qualification.trim());
+    const met = supplied && criteria.allowedQualifications.some((item) => qualification.toLowerCase().includes(item.toLowerCase()));
+    if (!supplied) missingInfo.push('Current educational qualification');
     checks.push({
       criteriaName: 'Current Educational Qualification',
-      met: qualMet,
+      met,
       expected: criteria.allowedQualifications.join(' / '),
-      actual: candidateQual,
-      notes: qualMet ? 'Acceptable qualification level' : 'Higher degree or required diploma not matched',
+      actual: supplied ? qualification : 'Not provided',
+      notes: !supplied ? 'Current qualification is required to assess this criterion' : met ? 'Acceptable qualification level' : 'Required qualification not matched',
     });
   }
 
-  // Missing info identification
-  if (!profile.personalInfo.category) missingInfo.push('Category reservation verification');
-  if (!profile.academicInfo.class12.rollNumber) missingInfo.push('Class 12 board roll number');
-  if (!profile.personalInfo.address.pincode) missingInfo.push('Residential Pin Code');
-
-  const passedCount = checks.filter(c => c.met).length;
-  const isEligible = checks.length === 0 || checks.every(c => c.met);
-  const scorePercentage = checks.length > 0 ? Math.round((passedCount / checks.length) * 100) : 100;
-
-  // AI explanation generation
-  let aiExplanation = '';
-  if (isEligible) {
-    aiExplanation = `Candidate ${profile.personalInfo.fullName} fully complies with ${exam.name} regulations set by ${exam.authority}. All academic credentials (${profile.academicInfo.class12.stream}, ${profile.academicInfo.class12.percentage}%) and age parameters are cleared.`;
-  } else {
-    const failingPoints = checks.filter(c => !c.met).map(c => c.criteriaName).join(', ');
-    aiExplanation = `Candidate does not currently satisfy mandatory criteria for ${exam.name}. Incompatibilities detected in: ${failingPoints}. Review official notification brochure before proceeding.`;
+  if (criteria.allowedCategories?.length) {
+    requiredCriteria += 1;
+    const category = profile.personalInfo.category;
+    const supplied = Boolean(category);
+    const met = supplied && criteria.allowedCategories.includes(category);
+    if (!supplied) missingInfo.push('Reservation category');
+    checks.push({
+      criteriaName: 'Reservation Category',
+      met,
+      expected: criteria.allowedCategories.join(' / '),
+      actual: supplied ? category : 'Not provided',
+      notes: !supplied ? 'Reservation category is required to assess this criterion' : met ? 'Category meets this criterion' : 'Category requirement not met',
+    });
   }
+
+  if (requiredCriteria === 0) missingInfo.push('Eligibility criteria are not configured for this examination');
+  const sufficientInformation = requiredCriteria > 0 && missingInfo.length === 0;
+  const passedCount = checks.filter((check) => check.met).length;
+  const isEligible = sufficientInformation && passedCount === checks.length;
+  const scorePercentage = checks.length ? Math.round((passedCount / checks.length) * 100) : 0;
+  const aiExplanation = !sufficientInformation
+    ? `Eligibility for ${exam.name} cannot be determined yet. Provide: ${[...new Set(missingInfo)].join(', ')}. Confirm requirements against the official examination notice.`
+    : isEligible
+      ? `The saved profile currently meets the configured eligibility criteria for ${exam.name}. Confirm all details against the official examination notice before applying.`
+      : `The saved profile does not meet these configured criteria for ${exam.name}: ${checks.filter((check) => !check.met).map((check) => check.criteriaName).join(', ')}. Review the official notification before proceeding.`;
 
   return {
     examId: exam.id,
     examName: exam.name,
     isEligible,
+    sufficientInformation,
     scorePercentage,
     checks,
-    missingInfo,
+    missingInfo: [...new Set(missingInfo)],
     aiExplanation,
   };
 }
 
-/**
- * Maps student profile fields into standardized examination form schema.
- */
-export function mapProfileToExamFields(profile: StudentProfile, examName: string): {
+export function mapProfileToExamFields(profile: StudentProfile, exam: ExamItem, documents: DocumentRecord[] = []): {
   category: string;
   fields: {
     examField: string;
     studentValue: string;
-    status: 'Verified' | 'Auto-Mapped' | 'Missing';
+    status: 'Verified' | 'Auto-Mapped' | 'Missing' | 'Manual Review';
   }[];
 }[] {
-  const p = profile.personalInfo;
-  const a = profile.academicInfo;
+  const definitions = exam.applicationFields ?? [];
+  if (!definitions.length) return [];
 
-  return [
-    {
-      category: 'Identity & Demographics',
-      fields: [
-        { examField: 'Candidate Full Name', studentValue: p.fullName, status: p.fullName ? 'Verified' : 'Missing' },
-        { examField: 'Date of Birth (DD/MM/YYYY)', studentValue: p.dob, status: p.dob ? 'Verified' : 'Missing' },
-        { examField: 'Gender', studentValue: p.gender, status: 'Verified' },
-        { examField: 'Reservation Category', studentValue: p.category, status: 'Verified' },
-        { examField: 'Nationality', studentValue: p.nationality, status: 'Verified' },
-        { examField: "Father's / Guardian's Name", studentValue: p.fathersName || 'Ramesh Sharma', status: 'Auto-Mapped' },
-        { examField: "Mother's Name", studentValue: p.mothersName || 'Sunita Sharma', status: 'Auto-Mapped' },
-      ],
-    },
-    {
-      category: 'Contact & Communication',
-      fields: [
-        { examField: 'Primary Registered Email', studentValue: p.email, status: 'Verified' },
-        { examField: 'Mobile Number for OTP', studentValue: p.phoneNumber, status: 'Verified' },
-        { examField: 'Permanent Address Line', studentValue: `${p.address.street}, ${p.address.city}, ${p.address.state}`, status: 'Verified' },
-        { examField: 'PIN Code', studentValue: p.address.pincode, status: p.address.pincode ? 'Verified' : 'Missing' },
-      ],
-    },
-    {
-      category: 'Secondary (Class 10) Record',
-      fields: [
-        { examField: '10th Board Name', studentValue: a.class10.board, status: 'Verified' },
-        { examField: '10th Passing Year', studentValue: String(a.class10.passingYear), status: 'Verified' },
-        { examField: '10th Aggregate Percentage', studentValue: `${a.class10.percentage}%`, status: 'Verified' },
-        { examField: '10th Roll / Registration No.', studentValue: a.class10.rollNumber, status: 'Verified' },
-      ],
-    },
-    {
-      category: 'Senior Secondary (Class 12) Record',
-      fields: [
-        { examField: '12th Qualifying Status', studentValue: a.class12.status, status: 'Verified' },
-        { examField: '12th Examination Board', studentValue: a.class12.board, status: 'Verified' },
-        { examField: '12th Stream / Group', studentValue: a.class12.stream, status: 'Verified' },
-        { examField: '12th Aggregate Percentage', studentValue: `${a.class12.percentage}%`, status: 'Verified' },
-        { examField: '12th Roll Number', studentValue: a.class12.rollNumber, status: a.class12.rollNumber ? 'Verified' : 'Missing' },
-      ],
-    },
-  ];
+  const readProfileField = (path: string | undefined): unknown => {
+    if (!path) return undefined;
+    return path.split('.').reduce<unknown>((value, segment) => {
+      if (!value || typeof value !== 'object') return undefined;
+      return (value as Record<string, unknown>)[segment];
+    }, profile);
+  };
+  const groups = new Map<string, { examField: string; studentValue: string; status: 'Verified' | 'Auto-Mapped' | 'Missing' | 'Manual Review' }[]>();
+
+  for (const definition of definitions) {
+    const value = readProfileField(definition.profileField);
+    const present = hasValue(value);
+    const document = definition.documentType
+      ? documents.find((item) => item.type === definition.documentType && Boolean(item.fileUrl))
+      : undefined;
+    const status = definition.documentType
+      ? document?.status === 'Verified'
+        ? 'Verified'
+        : document ? 'Manual Review' : 'Missing'
+      : present ? 'Auto-Mapped' : 'Missing';
+    const groupName = definition.key.split('.')[0] || 'Application';
+    const group = groups.get(groupName) ?? [];
+    const mappedValue = definition.documentType ? document?.fileName ?? '' : value;
+    group.push({
+      examField: definition.label,
+      studentValue: Array.isArray(mappedValue) ? mappedValue.join(', ') : mappedValue === undefined || mappedValue === null ? '' : String(mappedValue),
+      status,
+    });
+    groups.set(groupName, group);
+  }
+
+  return [...groups.entries()].map(([category, fields]) => ({ category, fields }));
 }
