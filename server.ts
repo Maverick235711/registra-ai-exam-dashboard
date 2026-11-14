@@ -909,8 +909,8 @@ app.get('/api/dashboard/stats', requireAuth, asyncHandler(async (req, res) => {
       if (!fileStat.isFile()) throw new Error('A saved document is not a regular file. Contact support.');
       return fileStat.size;
     } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        throw new Error('A saved document file is missing from storage. Contact support.');
+            if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return 0;
       }
       throw error;
     }
