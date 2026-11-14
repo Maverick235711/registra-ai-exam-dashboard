@@ -81,8 +81,8 @@ export const DashboardOverview: React.FC = () => {
     <div className="space-y-4 sm:space-y-5">
       <div className="grid gap-4 md:grid-cols-12">
         <section className="hero-marble relative isolate overflow-hidden rounded-3xl p-5 text-white shadow-lg sm:p-7 md:col-span-8" aria-labelledby="profile-progress-title">
-  <div aria-hidden="true" className="hero-paper-texture" />
-  <div className="relative z-10 flex h-full flex-col">
+          <div aria-hidden="true" className="hero-paper-texture" />
+             <div className="relative z-10 flex h-full flex-col">
             <p className="inline-flex items-center gap-2 text-[10px] font-semibold tracking-wide text-white/90 sm:text-[11px]">
               <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
               Unified National Exam Command Center · One profile, every exam, zero repetition
