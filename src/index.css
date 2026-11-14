@@ -649,3 +649,53 @@ html.dark option {
     background: linear-gradient(180deg, #04060c 0%, #0a1226 100%);
   }
 }
+
+html.dark {
+  color-scheme: dark;
+  background: #04070f;
+}
+
+html.dark body,
+html.dark #root {
+  background: transparent;
+}
+
+html.dark body::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='paper' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.015 0.02' numOctaves='5' seed='7' result='noise'/%3E%3CfeDiffuseLighting in='noise' surfaceScale='4' diffuseConstant='1' lighting-color='%23b9c8ff' result='light'%3E%3CfeDistantLight azimuth='45' elevation='58'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
+  background-size: 900px 900px;
+  mix-blend-mode: screen;
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+html.dark body::after {
+  mix-blend-mode: screen;
+  opacity: 0.06;
+}
+
+html.dark .hero-paper-texture {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='paper' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.015 0.02' numOctaves='5' seed='7' result='noise'/%3E%3CfeDiffuseLighting in='noise' surfaceScale='4' diffuseConstant='0.9' lighting-color='%23d6e0ff' result='light'%3E%3CfeDistantLight azimuth='45' elevation='58'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
+  background-size: 900px 900px;
+  mix-blend-mode: soft-light;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+html.dark .surface-card {
+  background: rgb(14 24 52 / 50%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html.dark body::before,
+  html.dark body::after,
+  html.dark .hero-paper-texture {
+    display: none;
+  }
+
+  html.dark body,
+  html.dark #root {
+    background: transparent;
+  }
+}
