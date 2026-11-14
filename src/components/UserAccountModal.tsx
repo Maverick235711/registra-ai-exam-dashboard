@@ -99,8 +99,8 @@ export const UserAccountModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div className="bg-white/95 rounded-3xl max-w-lg w-full border border-registra/15 shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-5 border-b border-registra/10 flex items-center justify-between bg-registra-light/35">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
               {mode === 'register' ? <UserPlus className="w-5 h-5" /> : <User className="w-5 h-5" />}
@@ -140,11 +140,11 @@ export const UserAccountModal: React.FC = () => {
           )}
 
           {mode !== 'verify' && (
-            <div className="flex rounded-xl bg-slate-100 p-1">
-              <button type="button" onClick={() => switchMode('login')} className={`flex-1 rounded-lg py-2 text-xs font-semibold ${mode === 'login' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>
+            <div className="flex rounded-full bg-registra-light p-1">
+              <button type="button" onClick={() => switchMode('login')} className={`flex-1 rounded-full py-2 text-xs font-semibold ${mode === 'login' ? 'bg-white text-registra-dark shadow-sm' : 'text-slate-600'}`}>
                 Sign in
               </button>
-              <button type="button" onClick={() => switchMode('register')} className={`flex-1 rounded-lg py-2 text-xs font-semibold ${mode === 'register' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>
+              <button type="button" onClick={() => switchMode('register')} className={`flex-1 rounded-full py-2 text-xs font-semibold ${mode === 'register' ? 'bg-white text-registra-dark shadow-sm' : 'text-slate-600'}`}>
                 Create account
               </button>
             </div>
@@ -179,7 +179,7 @@ export const UserAccountModal: React.FC = () => {
                   <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required className="w-full bg-transparent text-xs font-normal outline-none" placeholder="Your password" />
                 </span>
               </label>
-              <button type="submit" disabled={isSubmitting || !email.trim() || !password} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50">
+              <button type="submit" disabled={isSubmitting || !email.trim() || !password} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-registra hover:bg-registra-dark text-white text-xs font-semibold shadow-sm transition-colors disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2">
                 {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
                 {isSubmitting ? 'Signing in…' : 'Sign in'}
               </button>
@@ -204,7 +204,7 @@ export const UserAccountModal: React.FC = () => {
                 Confirm password
                 <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-normal outline-none focus:border-indigo-500 focus:bg-white" placeholder="Re-enter your password" />
               </label>
-              <button type="submit" disabled={isSubmitting} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50">
+              <button type="submit" disabled={isSubmitting} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-registra hover:bg-registra-dark text-white text-xs font-semibold shadow-sm transition-colors disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2">
                 {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
                 {isSubmitting ? 'Creating account…' : 'Create account and send OTP'}
               </button>
@@ -218,11 +218,11 @@ export const UserAccountModal: React.FC = () => {
                 Verification code
                 <input type="text" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} required minLength={6} maxLength={6} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm tracking-[0.3em] font-semibold outline-none focus:border-indigo-500 focus:bg-white" placeholder="000000" />
               </label>
-              <button type="submit" disabled={isSubmitting || otp.length !== 6} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50">
+              <button type="submit" disabled={isSubmitting || otp.length !== 6} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-registra hover:bg-registra-dark text-white text-xs font-semibold shadow-sm transition-colors disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2">
                 {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
                 {isSubmitting ? 'Verifying…' : 'Verify email'}
               </button>
-              <button type="button" onClick={handleResendOtp} disabled={isSubmitting} className="w-full text-xs font-semibold text-indigo-700 hover:text-indigo-900 disabled:opacity-50">
+              <button type="button" onClick={handleResendOtp} disabled={isSubmitting} className="w-full rounded-full py-2 text-xs font-semibold text-registra-dark hover:text-registra disabled:opacity-50">
                 Resend verification code
               </button>
             </form>

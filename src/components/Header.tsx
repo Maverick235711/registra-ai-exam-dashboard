@@ -1,150 +1,112 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Menu, 
-  Search, 
-  Bell, 
-  Sparkles, 
-  Check, 
-  ExternalLink, 
-  Clock, 
-  User, 
-  ShieldCheck,
-  ChevronDown,
-  Users,
-  LogOut,
-  AlertCircle
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Bell, Check, ChevronDown, Clock, ExternalLink, LogOut, Search, ShieldCheck, Sparkles, User, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
-interface HeaderProps {
-  onOpenMobileSidebar: () => void;
-}
-
-export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
-  const { 
+export const Header: React.FC = () => {
+  const {
     currentUser,
-    profile, 
+    profile,
     profileCompletion,
-    searchQuery, 
-    setSearchQuery, 
-    notifications, 
-    markNotificationsRead, 
-    openWorkflow, 
+    searchQuery,
+    setSearchQuery,
+    notifications,
+    markNotificationsRead,
+    openWorkflow,
     setActiveTab,
     setUserModalOpen,
-    logout
+    logout,
   } = useApp();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  // Dynamic greeting based on current time
-  const currentHour = new Date().getHours();
-  const timeOfDayGreeting = currentHour < 12 
-    ? 'Good Morning' 
-    : currentHour < 17 
-      ? 'Good Afternoon' 
-      : 'Good Evening';
-
-  const userDisplayName = profile.personalInfo.fullName?.trim() || currentUser?.fullName?.trim() || '';
-  const firstName = userDisplayName ? userDisplayName.split(' ')[0] : (currentUser?.email ? currentUser.email.split('@')[0] : 'Candidate');
-  const userInitials = userDisplayName 
-    ? userDisplayName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-    : (currentUser?.email ? currentUser.email.slice(0, 2).toUpperCase() : 'ST');
+  const unreadCount = notifications.filter((notification) => !notification.read).length;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const currentDate = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date());
+  const userDisplayName = currentUser?.fullName?.trim() || profile.personalInfo.fullName?.trim() || '';
+  const firstName = userDisplayName.split(/\s+/)[0] || 'Candidate';
+  const userInitials = userDisplayName
+    ? userDisplayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+    : 'U';
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotificationsOpen(false);
-      }
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileDropdownOpen(false);
-      }
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) setNotificationsOpen(false);
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) setProfileDropdownOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const navigate = (tab: string) => {
+    setActiveTab(tab);
+    setProfileDropdownOpen(false);
+  };
+
   return (
-    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 py-3.5 transition-all">
-      <div className="flex items-center justify-between gap-4">
-        {/* Left: Mobile Toggle & Dynamic Greeting */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onOpenMobileSidebar}
-            className="p-2 -ml-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 lg:hidden"
-            aria-label="Open navigation sidebar"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                {timeOfDayGreeting}, {firstName} 👋
-              </h1>
-            </div>
-            <p className="text-xs text-slate-500 hidden sm:block">
-              Let's make your exam applications effortless.
-            </p>
+    <header className="w-full px-4 pt-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-5 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-display text-sm font-extrabold tracking-[-0.06em] text-ink">REGISTRA</span>
+            <span className="rounded-full border border-registra/30 px-1.5 py-0.5 text-[9px] font-bold leading-none tracking-wide text-registra-dark">
+              PRO
+            </span>
+            <span className="text-[11px] font-medium text-muted">· {currentDate}</span>
           </div>
+          <h1 className="font-display mt-3 text-[2rem] font-extrabold leading-tight text-ink sm:text-[2.4rem]">
+            {greeting}, {firstName}
+          </h1>
+          <p className="mt-1 text-sm text-muted">Let&apos;s make your exam applications effortless.</p>
         </div>
 
-        {/* Center: Global Search Bar */}
-        <div className="flex-1 max-w-md mx-2 hidden md:block">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 md:flex md:w-auto md:shrink-0">
+          <label className="relative min-w-0">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
             <input
-              type="text"
+              type="search"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search exams (JEE, NEET, GATE), forms, deadlines..."
-              className="w-full pl-9 pr-10 py-2 text-xs bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all placeholder:text-slate-400"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search exams (JEE, NEET, GATE...)"
+              aria-label="Search exams"
+              className="h-10 w-full min-w-0 rounded-full border border-registra/15 bg-white/80 pl-10 pr-3 text-[11px] text-ink shadow-sm outline-none transition placeholder:text-muted focus:border-registra focus:ring-2 focus:ring-registra/15 md:w-52 lg:w-56"
             />
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-white border border-slate-200 rounded shadow-2xs">
-              ⌘K
-            </kbd>
-          </div>
-        </div>
+          </label>
 
-        {/* Right: Actions, Notifications & Dynamic Profile */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Quick Apply Action */}
           <button
             type="button"
             onClick={() => openWorkflow()}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm hover:shadow transition-all"
+            className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-registra px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-registra-dark focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2 sm:px-4"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Apply with AI</span>
+            <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+            Apply with AI
           </button>
 
-          {/* Notifications Dropdown */}
           <div className="relative" ref={notifRef}>
             <button
               type="button"
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+              onClick={() => setNotificationsOpen((open) => !open)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full border border-registra/15 bg-white/80 text-ink transition hover:bg-registra-light"
               aria-label="View notifications"
+              aria-expanded={notificationsOpen}
             >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
-              )}
+              <Bell aria-hidden="true" className="h-4 w-4" />
+              {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-registra ring-2 ring-white" />}
             </button>
 
             {notificationsOpen && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 z-50 animate-in fade-in zoom-in-95">
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+              <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-3xl border border-registra/15 bg-white p-3 shadow-lg">
+                <div className="mb-2 flex items-center justify-between border-b border-registra/10 pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-900">Notifications</span>
+                    <span className="text-xs font-bold text-ink">Notifications</span>
                     {unreadCount > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">
+                      <span className="rounded-full bg-registra-light px-2 py-0.5 text-[10px] font-semibold text-registra-dark">
                         {unreadCount} new
                       </span>
                     )}
@@ -153,30 +115,25 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
                     type="button"
                     onClick={markNotificationsRead}
                     disabled={unreadCount === 0}
-                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold"
+                    className="rounded-full px-2 py-1 text-[11px] font-semibold text-registra-dark hover:bg-registra-light disabled:opacity-50"
                   >
                     Mark all read
                   </button>
                 </div>
-
-                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                <div className="max-h-72 space-y-1.5 overflow-y-auto">
                   {notifications.length === 0 && (
-                    <p className="rounded-xl bg-slate-50 p-4 text-center text-xs text-slate-500">
-                      No notifications yet.
-                    </p>
+                    <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-muted">No notifications yet.</p>
                   )}
-                  {notifications.map((n) => (
+                  {notifications.map((notification) => (
                     <div
-                      key={n.id}
-                      className={`p-2.5 rounded-xl text-xs transition-colors ${
-                        n.read ? 'bg-slate-50/60 hover:bg-slate-50' : 'bg-indigo-50/50 hover:bg-indigo-50/80 border border-indigo-100/60'
-                      }`}
+                      key={notification.id}
+                      className={`rounded-2xl p-3 text-xs ${notification.read ? 'bg-slate-50/70' : 'border border-registra/10 bg-registra-light/60'}`}
                     >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <span className="font-semibold text-slate-900 truncate">{n.title}</span>
-                        <span className="text-[10px] text-slate-400 whitespace-nowrap">{n.time}</span>
+                      <div className="mb-1 flex items-start justify-between gap-2">
+                        <span className="truncate font-semibold text-ink">{notification.title}</span>
+                        <span className="whitespace-nowrap text-[10px] text-muted">{notification.time}</span>
                       </div>
-                      <p className="text-[11px] text-slate-600 leading-relaxed">{n.desc}</p>
+                      <p className="text-[11px] leading-relaxed text-muted">{notification.desc}</p>
                     </div>
                   ))}
                 </div>
@@ -184,110 +141,70 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileSidebar }) => {
             )}
           </div>
 
-          {/* Profile Quick Menu - Dynamic Profile Avatar & Details */}
           <div className="relative" ref={profileRef}>
             <button
               type="button"
-              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-              className="flex items-center gap-2 p-1 pl-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              onClick={() => setProfileDropdownOpen((open) => !open)}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-registra text-xs font-bold text-white shadow-sm transition hover:bg-registra-dark"
               aria-label="User profile options"
+              aria-expanded={profileDropdownOpen}
             >
               {currentUser?.avatarUrl ? (
-                <img
-                  src={currentUser.avatarUrl}
-                  alt={userDisplayName}
-                  className="w-8 h-8 rounded-full object-cover ring-2 ring-indigo-500/30"
-                />
+                <img src={currentUser.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-bold text-xs flex items-center justify-center ring-2 ring-indigo-500/20 shadow-xs">
-                  {userInitials}
-                </div>
+                userInitials
               )}
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500 hidden sm:block" />
             </button>
 
             {profileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-3 py-2 border-b border-slate-100 mb-1">
-                  <div className="text-xs font-bold text-slate-900 truncate">
-                    {userDisplayName || 'Student Applicant'}
+              <div className="absolute right-0 z-50 mt-2 w-64 rounded-3xl border border-registra/15 bg-white p-2.5 shadow-lg">
+                <div className="mb-1 border-b border-registra/10 px-3 py-2">
+                  <div className="truncate text-xs font-bold text-ink">{userDisplayName || 'Candidate'}</div>
+                  <div className="truncate text-[11px] text-muted">{currentUser?.email || profile.personalInfo.email}</div>
+                  <div className="mt-2 flex items-center justify-between border-t border-registra/10 pt-2 text-[11px]">
+                    <span className="text-muted">Profile readiness</span>
+                    <span className="font-bold text-registra-dark">{profileCompletion.overall}%</span>
                   </div>
-                  <div className="text-[11px] text-slate-500 truncate">
-                    {currentUser?.email || profile.personalInfo.email}
-                  </div>
-                  
-                  {/* Dynamic Profile Progress Indicator */}
-                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500">Profile Readiness:</span>
-                    <span className="font-bold text-indigo-600">{profileCompletion.overall}%</span>
-                  </div>
-
-                  <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
-                    <span>{currentUser?.isVerified ? 'Official Records Verified' : 'Standard Student Account'}</span>
+                  <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-emerald-800">
+                    <ShieldCheck aria-hidden="true" className="h-3 w-3 shrink-0" />
+                    {currentUser?.isVerified ? 'Official Records Verified' : 'Standard Student Account'}
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('profile');
-                    setProfileDropdownOpen(false);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg text-left"
-                >
-                  <User className="w-3.5 h-3.5 text-slate-400" />
-                  <span>My Profile & Marks</span>
+                <button type="button" onClick={() => navigate('profile')} className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-xs text-ink hover:bg-registra-light">
+                  <User aria-hidden="true" className="h-3.5 w-3.5 text-registra" />
+                  My Profile &amp; Marks
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('documents');
-                    setProfileDropdownOpen(false);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg text-left"
-                >
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Document Vault</span>
+                <button type="button" onClick={() => navigate('documents')} className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-xs text-ink hover:bg-registra-light">
+                  <Clock aria-hidden="true" className="h-3.5 w-3.5 text-registra" />
+                  Document Vault
                 </button>
-
-                {/* Account Switcher Button */}
                 <button
                   type="button"
                   onClick={() => {
                     setUserModalOpen(true);
                     setProfileDropdownOpen(false);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50/70 rounded-lg text-left font-medium"
+                  className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-xs font-medium text-registra-dark hover:bg-registra-light"
                 >
-                  <Users className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Account / Sign In</span>
+                  <Users aria-hidden="true" className="h-3.5 w-3.5" />
+                  Account / Sign In
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('settings');
-                    setProfileDropdownOpen(false);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-lg text-left"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Security & Preferences</span>
+                <button type="button" onClick={() => navigate('settings')} className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-xs text-ink hover:bg-registra-light">
+                  <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 text-registra" />
+                  Security &amp; Preferences
                 </button>
-
-                <div className="pt-1 mt-1 border-t border-slate-100">
+                <div className="mt-1 border-t border-registra/10 pt-1">
                   <button
                     type="button"
                     onClick={() => {
-                      logout();
+                      void logout();
                       setProfileDropdownOpen(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg text-left"
+                    className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-xs text-registra-dark hover:bg-registra-light"
                   >
-                    <LogOut className="w-3.5 h-3.5 text-rose-500" />
-                    <span>Sign Out</span>
+                    <LogOut aria-hidden="true" className="h-3.5 w-3.5" />
+                    Sign out
                   </button>
                 </div>
               </div>
