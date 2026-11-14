@@ -54,11 +54,7 @@ export const Header: React.FC = () => {
       <div className="mx-auto flex max-w-[1280px] flex-col gap-5 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-display text-sm font-extrabold tracking-[-0.06em] text-ink">REGISTRA</span>
-            <span className="rounded-full border border-registra/30 px-1.5 py-0.5 text-[9px] font-bold leading-none tracking-wide text-registra-dark">
-              PRO
-            </span>
-            <span className="text-[11px] font-medium text-muted">· {currentDate}</span>
+            <span className="text-[11px] font-medium text-muted">{currentDate}</span>
           </div>
           <h1 className="font-display mt-3 text-[2rem] font-extrabold leading-tight text-ink sm:text-[2.4rem]">
             {greeting}, {firstName}
