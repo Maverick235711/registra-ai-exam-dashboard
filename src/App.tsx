@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ToastContainer } from './components/ToastContainer';
@@ -116,8 +117,10 @@ const DashboardContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <DashboardContent />
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <DashboardContent />
+      </AppProvider>
+    </ThemeProvider>
   );
 }

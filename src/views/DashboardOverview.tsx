@@ -370,7 +370,7 @@ export const DashboardOverview: React.FC = () => {
                   aria-label={`${autoMappedCount} auto-mapped fields and ${manualCount} fields requiring manual review`}
                 >
                   <div className="h-full rounded-full bg-registra transition-[width]" style={{ width: `${mappedPercent}%` }} />
-                  <div className="h-full flex-1 bg-[#f5d2db]" />
+                  <div className="h-full flex-1 bg-manual-track" />
                 </div>
                 <p className="mt-2 text-[9px] leading-relaxed text-muted">Auto-mapped fields vs fields filled manually.</p>
               </>

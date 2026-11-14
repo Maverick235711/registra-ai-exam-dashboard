@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Check, ChevronDown, Clock, ExternalLink, LogOut, Search, ShieldCheck, Sparkles, User, Users } from 'lucide-react';
+import { Bell, Check, ChevronDown, Clock, ExternalLink, LogOut, Moon, Search, ShieldCheck, Sparkles, Sun, User, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const Header: React.FC = () => {
   const {
@@ -16,6 +17,7 @@ export const Header: React.FC = () => {
     setUserModalOpen,
     logout,
   } = useApp();
+  const { theme, toggleTheme } = useTheme();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -62,7 +64,7 @@ export const Header: React.FC = () => {
           <p className="mt-1 text-sm text-muted">Let&apos;s make your exam applications effortless.</p>
         </div>
 
-        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 md:flex md:w-auto md:shrink-0">
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 md:flex md:w-auto md:shrink-0">
           <label className="relative min-w-0">
             <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
             <input
@@ -71,29 +73,43 @@ export const Header: React.FC = () => {
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search exams (JEE, NEET, GATE...)"
               aria-label="Search exams"
-              className="h-10 w-full min-w-0 rounded-full border border-registra/15 bg-white/80 pl-10 pr-3 text-[11px] text-ink shadow-sm outline-none transition placeholder:text-muted focus:border-registra focus:ring-2 focus:ring-registra/15 md:w-52 lg:w-56"
+              className="h-10 w-full min-w-0 rounded-full border border-registra/15 bg-white/80 pl-10 pr-3 text-[11px] text-ink shadow-sm outline-none transition placeholder:text-muted focus:border-registra focus:ring-2 focus:ring-registra/15 dark:bg-[rgb(14_24_52_/_0.72)] dark:focus:bg-[rgb(14_24_52_/_0.86)] md:w-52 lg:w-56"
             />
           </label>
 
           <button
             type="button"
             onClick={() => openWorkflow()}
-            className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-registra px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-registra-dark focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2 sm:px-4"
+            className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-registra px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-registra-dark focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2 dark:focus-visible:ring-offset-page sm:px-4"
           >
             <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
             Apply with AI
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-registra/15 bg-white/80 text-ink transition hover:bg-registra-light focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2 dark:bg-[rgb(14_24_52_/_0.72)] dark:focus-visible:ring-offset-page"
+            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-pressed={theme === 'dark'}
+          >
+            {theme === 'dark' ? (
+              <Sun aria-hidden="true" className="theme-toggle-icon h-4 w-4" />
+            ) : (
+              <Moon aria-hidden="true" className="theme-toggle-icon h-4 w-4" />
+            )}
           </button>
 
           <div className="relative" ref={notifRef}>
             <button
               type="button"
               onClick={() => setNotificationsOpen((open) => !open)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-full border border-registra/15 bg-white/80 text-ink transition hover:bg-registra-light"
+              className="relative flex h-10 w-10 items-center justify-center rounded-full border border-registra/15 bg-white/80 text-ink transition hover:bg-registra-light focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2 dark:bg-[rgb(14_24_52_/_0.72)] dark:focus-visible:ring-offset-page"
               aria-label="View notifications"
               aria-expanded={notificationsOpen}
             >
               <Bell aria-hidden="true" className="h-4 w-4" />
-              {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-registra ring-2 ring-white" />}
+              {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-registra ring-2 ring-white dark:ring-[#04060c]" />}
             </button>
 
             {notificationsOpen && (

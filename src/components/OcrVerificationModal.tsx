@@ -236,7 +236,7 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
       <section className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
-            <h2 id="ocr-title" className="text-base font-semibold text-[#172554]">Scan a document</h2>
+            <h2 id="ocr-title" className="text-base font-semibold text-[#172554] dark:text-ink">Scan a document</h2>
             <p className="mt-1 text-xs text-slate-500">Review extracted values before saving them.</p>
           </div>
           <button type="button" onClick={busy ? cancelScan : onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={busy ? 'Cancel scan' : 'Close'}>
@@ -265,7 +265,7 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
                   setSaved(false);
                   setStage('idle');
                 }}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-[#4563F5] focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-[#4563F5] focus:outline-none focus:ring-2 focus:ring-blue-100 dark:bg-[rgb(14_24_52_/_0.86)] dark:text-ink dark:focus:border-registra dark:focus:ring-registra/20"
               >
                 {documentTypes.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
@@ -275,9 +275,9 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
               type="button"
               disabled={busy}
               onClick={() => fileInputRef.current?.click()}
-              className="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-4 text-left hover:border-[#4563F5] hover:bg-blue-50/40 disabled:opacity-60"
+              className="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-4 text-left hover:border-[#4563F5] hover:bg-blue-50/40 disabled:opacity-60 dark:hover:border-registra"
             >
-              <Upload className="h-5 w-5 shrink-0 text-[#4563F5]" />
+              <Upload className="h-5 w-5 shrink-0 text-[#4563F5] dark:text-registra" />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-slate-800">{file?.name ?? (hasSavedFile ? selectedDocument?.fileName : 'Choose a document')}</span>
                 <span className="mt-0.5 block text-xs text-slate-500">JPG, PNG, WEBP, or PDF · Up to 10 MB</span>
@@ -315,25 +315,25 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
                 checked={consentGiven}
                 onChange={(event) => setConsentGiven(event.target.checked)}
                 disabled={busy}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4563F5] focus:ring-[#4563F5]"
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4563F5] focus:ring-[#4563F5] dark:text-registra dark:focus:ring-registra"
               />
               I consent to sending this document to Google Gemini for text extraction. Sensitive identity numbers are not requested.
             </label>
 
             {busy && (
-              <div aria-live="polite" className="space-y-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs text-[#172554]">
+              <div aria-live="polite" className="space-y-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs text-[#172554] dark:bg-registra-light dark:text-ink">
                 <div className="flex items-center gap-2">
-                  <LoaderCircle className="h-4 w-4 animate-spin text-[#4563F5]" />
+                  <LoaderCircle className="h-4 w-4 animate-spin text-[#4563F5] dark:text-registra" />
                   <span>{stageLabel}</span>
                 </div>
                 {stage === 'uploading' && (
-                  <progress value={uploadProgress} max="100" className="h-1.5 w-full accent-[#4563F5]" aria-label="Upload progress" />
+                  <progress value={uploadProgress} max="100" className="h-1.5 w-full accent-[#4563F5] dark:accent-registra" aria-label="Upload progress" />
                 )}
               </div>
             )}
 
             {error && (
-              <div role="alert" className="flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+              <div role="alert" className="flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-400/40 dark:bg-rose-950/40 dark:text-rose-200">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -362,7 +362,7 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
                         value={field.value ?? ''}
                         disabled={saved || saving}
                         onChange={(event) => updateField(key, event.target.value)}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#4563F5] focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50"
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#4563F5] focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 dark:bg-[rgb(14_24_52_/_0.86)] dark:text-ink dark:focus:border-registra dark:focus:ring-registra/20"
                         placeholder="Not found in document"
                       />
                     </label>
@@ -393,7 +393,7 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
               type="button"
               onClick={() => void startScan()}
               disabled={busy || !file && !hasSavedFile || saved || !consentGiven}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4563F5] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4563F5] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-[#e7ecff] dark:text-[#081226] dark:hover:bg-[#d6e0ff]"
             >
               <ScanSearch className="h-4 w-4" />
               {stage === 'idle' && error ? 'Retry scan' : 'Scan with AI'}
@@ -402,7 +402,7 @@ export const OcrVerificationModal: React.FC<OcrVerificationModalProps> = ({
               type="button"
               onClick={() => void saveExtraction()}
               disabled={!Object.values(fields).some((field) => field.value?.trim()) || busy || saving || saved}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#172554] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#172554] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:border dark:border-[rgb(130_160_255_/_0.35)] dark:bg-transparent dark:text-ink dark:hover:bg-[rgb(14_24_52_/_0.75)]"
             >
               <Check className="h-4 w-4" />
               {saving ? 'Saving…' : saved ? 'Saved' : 'Confirm and save'}

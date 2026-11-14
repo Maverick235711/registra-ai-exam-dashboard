@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, LockKeyhole, Mail, ShieldCheck, User, UserPlus, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun, User, UserPlus, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 import { apiService } from '../services/apiService';
 
 type AuthMode = 'login' | 'register' | 'verify';
 
 export const UserAccountModal: React.FC = () => {
   const { currentUser, login, userModalOpen, setUserModalOpen, profileCompletion, authNotice, clearAuthNotice } = useApp();
+  const { theme, toggleTheme } = useTheme();
   const [mode, setMode] = useState<AuthMode>('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -112,11 +114,26 @@ export const UserAccountModal: React.FC = () => {
               <p className="text-xs text-slate-500">Your account securely accesses your private records and documents</p>
             </div>
           </div>
-          {currentUser && (
-            <button type="button" onClick={() => setUserModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Close account dialog">
-              <X className="w-4 h-4" />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-registra/15 bg-white/80 text-ink transition hover:bg-registra-light focus-visible:ring-2 focus-visible:ring-registra focus-visible:ring-offset-2"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              aria-pressed={theme === 'dark'}
+            >
+              {theme === 'dark' ? (
+                <Sun aria-hidden="true" className="theme-toggle-icon h-3.5 w-3.5" />
+              ) : (
+                <Moon aria-hidden="true" className="theme-toggle-icon h-3.5 w-3.5" />
+              )}
             </button>
-          )}
+            {currentUser && (
+              <button type="button" onClick={() => setUserModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Close account dialog">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto">
@@ -140,11 +157,11 @@ export const UserAccountModal: React.FC = () => {
           )}
 
           {mode !== 'verify' && (
-            <div className="flex rounded-full bg-registra-light p-1">
-              <button type="button" onClick={() => switchMode('login')} className={`flex-1 rounded-full py-2 text-xs font-semibold ${mode === 'login' ? 'bg-white text-registra-dark shadow-sm' : 'text-slate-600'}`}>
+            <div className="flex rounded-full bg-registra-light p-1 dark:border dark:border-[rgb(130_160_255_/_0.18)] dark:bg-[rgb(14_24_52_/_0.65)]">
+              <button type="button" onClick={() => switchMode('login')} className={`flex-1 rounded-full py-2 text-xs font-semibold ${mode === 'login' ? 'bg-white text-registra-dark shadow-sm dark:!bg-[#e7ecff] dark:!text-[#081226]' : 'text-slate-600 dark:text-muted'}`}>
                 Sign in
               </button>
-              <button type="button" onClick={() => switchMode('register')} className={`flex-1 rounded-full py-2 text-xs font-semibold ${mode === 'register' ? 'bg-white text-registra-dark shadow-sm' : 'text-slate-600'}`}>
+              <button type="button" onClick={() => switchMode('register')} className={`flex-1 rounded-full py-2 text-xs font-semibold ${mode === 'register' ? 'bg-white text-registra-dark shadow-sm dark:!bg-[#e7ecff] dark:!text-[#081226]' : 'text-slate-600 dark:text-muted'}`}>
                 Create account
               </button>
             </div>

@@ -117,7 +117,7 @@ export const MyDocumentsView: React.FC = () => {
     <div className="space-y-6">
       <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-[#172554]">Document Vault</h2>
+          <h2 className="text-lg font-semibold text-[#172554] dark:text-ink">Document Vault</h2>
           <p className="mt-1 text-sm text-slate-600">View and manage the documents saved to your account.</p>
         </div>
         <div className="flex gap-5 text-sm">
@@ -150,7 +150,7 @@ export const MyDocumentsView: React.FC = () => {
               <article key={doc.id} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#4563F5]">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#4563F5] dark:text-registra">
                       <FileText className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
@@ -175,19 +175,19 @@ export const MyDocumentsView: React.FC = () => {
                     <div className="mb-1 flex justify-between text-xs text-slate-600">
                       <span>Uploading</span><span>{uploadProgress[doc.id] ?? 0}%</span>
                     </div>
-                    <progress value={uploadProgress[doc.id] ?? 0} max="100" className="h-1.5 w-full accent-[#4563F5]" aria-label="Upload progress" />
+                    <progress value={uploadProgress[doc.id] ?? 0} max="100" className="h-1.5 w-full accent-[#4563F5] dark:accent-registra" aria-label="Upload progress" />
                   </div>
                 ) : hasFile ? (
                   <button
                     type="button"
                     onClick={() => setSelectedDocForPreview(doc)}
-                    className="mt-4 flex h-28 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-[#4563F5] hover:bg-blue-50"
+                    className="mt-4 flex h-28 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-[#4563F5] hover:bg-blue-50 dark:text-registra"
                   >
                     {isPdf ? <FileText className="mr-2 h-5 w-5" /> : <Eye className="mr-2 h-4 w-4" />}
                     Preview document
                   </button>
                 ) : (
-                  <label htmlFor={inputId} className="mt-4 flex h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center hover:border-[#4563F5]">
+                  <label htmlFor={inputId} className="mt-4 flex h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center hover:border-[#4563F5] dark:hover:border-registra">
                     <Upload className="mb-2 h-5 w-5 text-slate-400" />
                     <span className="text-xs font-medium text-slate-700">Upload document</span>
                     <span className="mt-1 text-[11px] text-slate-500">PDF, JPG, PNG, WEBP · 10 MB max</span>
@@ -208,7 +208,7 @@ export const MyDocumentsView: React.FC = () => {
                       type="button"
                       disabled={!hasFile || isUploading}
                       onClick={() => openOcrStudio(doc.id)}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-[#4563F5] hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-[#4563F5] hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-registra"
                     >
                       <ScanSearch className="h-4 w-4" /> Scan with AI
                     </button>
@@ -278,7 +278,7 @@ export const MyDocumentsView: React.FC = () => {
               )}
             </div>
             <footer className="flex justify-end border-t border-slate-200 p-3">
-              <a href={downloadUrl(selectedDocForPreview)} download={selectedDocForPreview.fileName} className="inline-flex items-center gap-2 rounded-lg bg-[#4563F5] px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+              <a href={downloadUrl(selectedDocForPreview)} download={selectedDocForPreview.fileName} className="inline-flex items-center gap-2 rounded-lg bg-[#4563F5] px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 dark:bg-[#e7ecff] dark:text-[#081226] dark:hover:bg-[#d6e0ff]">
                 <Download className="h-4 w-4" /> Download
               </a>
             </footer>

@@ -60,8 +60,12 @@ export const RegistraLogo: React.FC<RegistraLogoProps> = ({
 
   const currentSize = sizeMap[size];
 
-  // Font color based on theme
-  const textColor = theme === 'dark' ? 'text-white' : 'text-[#172554]';
+  const textColor =
+    theme === 'dark'
+      ? 'text-white'
+      : theme === 'auto'
+        ? 'text-[#172554] dark:text-white'
+        : 'text-[#172554]';
 
   if (variant === 'icon-only') {
     return (
