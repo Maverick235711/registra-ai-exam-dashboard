@@ -188,6 +188,8 @@ body {
   background: transparent;
 }
 
+
+
 /* Crumpled paper texture, sabse peeche */
 body::before {
   content: "";
@@ -195,10 +197,10 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='900' height='900'><filter id='c' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.007 0.011' numOctaves='5' seed='7' result='n'/><feDiffuseLighting in='n' surfaceScale='2.4' diffuseConstant='1' lighting-color='%23ffffff'><feDistantLight azimuth='225' elevation='62'/></feDiffuseLighting></filter><rect width='100%25' height='100%25' filter='url(%23c)'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='900' height='900'><filter id='c' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.015 0.02' numOctaves='5' seed='7' result='n'/><feDiffuseLighting in='n' surfaceScale='3.5' diffuseConstant='1' lighting-color='%23ffffff'><feDistantLight azimuth='45' elevation='62'/></feDiffuseLighting></filter><rect width='100%25' height='100%25' filter='url(%23c)'/></svg>");
   background-size: 900px 900px;
   mix-blend-mode: multiply;
-  opacity: 0.5;
+  opacity: 0.3;
 }
 
 /* Bahut halka fine grain, paper fibre jaisa */
