@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -1749,7 +1748,8 @@ app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
 // Setup Vite in development or static serving in production
 async function startServer() {
   await db.checkConnection();
-  if (!isProd) {
+    if (!isProd) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
