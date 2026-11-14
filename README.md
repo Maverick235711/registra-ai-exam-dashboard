@@ -179,6 +179,10 @@ NODE_ENV=production npm start
 
 `npm start` runs the existing Express server through `tsx`. With `NODE_ENV=production`, the server serves the Vite build from `dist/`; the API routes are registered before static assets and the SPA fallback. Set `PORT` if the hosting provider supplies a port other than `3000`. Apply migrations as a release step before starting the app. Ensure the Neon database role has only the required application permissions and that backups/restore procedures are enabled.
 
+### Vercel
+
+The checked-in `vercel.json` builds the Vite frontend and rewrites `/api/*` requests to the Express function in `api/index.ts`; the Express app is exported without starting a separate listener in the function. Configure `DATABASE_URL` and `DIRECT_URL` in the Vercel project environment variables before deployment, and apply Prisma migrations to that database as a release step. Also configure `APP_URL` and the email settings if account registration and verification email are enabled.
+
 ## Authentication and email setup
 
 Copy `.env.example` to `.env`. Configure the following to enable real registration OTP and password-reset email delivery:

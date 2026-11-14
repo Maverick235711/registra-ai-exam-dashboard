@@ -62,7 +62,7 @@ const emailTransport = () => {
   });
 };
 
-const app = express();
+export const app = express();
 
 const sanitizeUser = (user?: UserAccount | null): Partial<UserAccount> | null => {
   if (!user) return null;
@@ -1781,24 +1781,28 @@ async function startServer() {
   process.once('SIGTERM', () => shutdown('SIGTERM'));
 }
 
-startServer().catch((err) => {
-  const errorCode = getErrorCode(err);
-  if (isProd) {
-    console.error('[REGISTRA] Failed to start server:', errorCode ?? (err instanceof Error ? err.name : 'UnknownError'));
-  } else {
-    const details: Record<string, unknown> = {
-      name: err instanceof Error ? err.name : 'UnknownError',
-      code: errorCode,
-      message: getErrorMessage(err),
-    };
-    if (err instanceof Error && err.stack) details.stack = redactSensitiveText(err.stack);
-    if (typeof err === 'object' && err !== null) {
-      for (const key of ['clientVersion', 'meta']) {
-        const value = Reflect.get(err, key);
-        if (value !== undefined) details[key] = sanitizeLogValue(value, [], key);
+export default app;
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  startServer().catch((err) => {
+    const errorCode = getErrorCode(err);
+    if (isProd) {
+      console.error('[REGISTRA] Failed to start server:', errorCode ?? (err instanceof Error ? err.name : 'UnknownError'));
+    } else {
+      const details: Record<string, unknown> = {
+        name: err instanceof Error ? err.name : 'UnknownError',
+        code: errorCode,
+        message: getErrorMessage(err),
+      };
+      if (err instanceof Error && err.stack) details.stack = redactSensitiveText(err.stack);
+      if (typeof err === 'object' && err !== null) {
+        for (const key of ['clientVersion', 'meta']) {
+          const value = Reflect.get(err, key);
+          if (value !== undefined) details[key] = sanitizeLogValue(value, [], key);
+        }
       }
+      console.error('[REGISTRA] Failed to start server:', JSON.stringify(details, null, 2));
     }
-    console.error('[REGISTRA] Failed to start server:', JSON.stringify(details, null, 2));
-  }
-  process.exit(1);
-});
+    process.exit(1);
+  });
+}
